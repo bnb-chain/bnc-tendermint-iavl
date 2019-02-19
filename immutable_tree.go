@@ -28,6 +28,10 @@ func NewImmutableTree(db dbm.DB, cacheSize int) *ImmutableTree {
 	}
 }
 
+func GetRoot(t *ImmutableTree) *Node {
+	return t.root
+}
+
 // String returns a string representation of Tree.
 func (t *ImmutableTree) String() string {
 	leaves := []string{}

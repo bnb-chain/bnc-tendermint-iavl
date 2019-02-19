@@ -135,6 +135,10 @@ func (node *Node) clone(version int64) *Node {
 	}
 }
 
+func Key(node *Node) []byte { return node.key }
+func Value(node *Node) []byte { return node.value }
+
+func IsLeaf(node *Node) bool { return node.isLeaf() }
 func (node *Node) isLeaf() bool {
 	return node.height == 0
 }
@@ -194,6 +198,7 @@ func (node *Node) getByIndex(t *ImmutableTree, index int64) (key []byte, value [
 
 // Computes the hash of the node without computing its descendants. Must be
 // called on nodes which have descendant node hashes already computed.
+func Hash(node *Node) []byte { return node._hash() }
 func (node *Node) _hash() []byte {
 	if node.hash != nil {
 		return node.hash
@@ -341,6 +346,7 @@ func (node *Node) writeBytes(w io.Writer) cmn.Error {
 	return nil
 }
 
+func GetLeftNode(node *Node, t *ImmutableTree) *Node { return node.getLeftNode(t) }
 func (node *Node) getLeftNode(t *ImmutableTree) *Node {
 	if node.leftNode != nil {
 		return node.leftNode
@@ -348,6 +354,7 @@ func (node *Node) getLeftNode(t *ImmutableTree) *Node {
 	return t.ndb.GetNode(node.leftHash)
 }
 
+func GetRightNode(node *Node, t *ImmutableTree) *Node { return node.getRightNode(t) }
 func (node *Node) getRightNode(t *ImmutableTree) *Node {
 	if node.rightNode != nil {
 		return node.rightNode
