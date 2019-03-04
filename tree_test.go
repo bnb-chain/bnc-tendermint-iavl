@@ -74,6 +74,7 @@ func TestVersionedRandomTree(t *testing.T) {
 
 	require.Len(tree.versions, 1, "tree must have one version left")
 	tr, err := tree.GetImmutable(int64(versions))
+	tr.nodeSize() // deliberately link left/right nodes with parents
 	require.NoError(err, "GetImmutable should not error for version %d", versions)
 	require.Equal(tr.root, tree.root)
 
