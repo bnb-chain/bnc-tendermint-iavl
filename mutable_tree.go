@@ -22,7 +22,7 @@ type MutableTree struct {
 
 // NewMutableTree returns a new tree with the specified cache size and datastore.
 func NewMutableTree(db dbm.DB, cacheSize int) *MutableTree {
-	ndb := newNodeDB(db, cacheSize)
+	ndb := NewNodeDB(db, cacheSize)
 	head := &ImmutableTree{ndb: ndb}
 
 	return &MutableTree{
@@ -270,7 +270,7 @@ func (tree *MutableTree) LoadVersionForOverwriting(targetVersion int64) (int64, 
 	if err != nil {
 		return latestVersion, err
 	}
-	tree.deleteVersionsFrom(targetVersion+1)
+	tree.deleteVersionsFrom(targetVersion + 1)
 	return targetVersion, nil
 }
 
@@ -343,13 +343,13 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 		// removed.
 		debug("SAVE EMPTY TREE %v\n", version)
 		tree.ndb.SaveOrphans(version, tree.orphans)
-		tree.ndb.SaveEmptyRoot(version)
+		tree.ndb.SaveEmptyRoot(version, false)
 	} else {
 		debug("SAVE TREE %v\n", version)
 		// Save the current tree.
 		tree.ndb.SaveBranch(tree.root)
 		tree.ndb.SaveOrphans(version, tree.orphans)
-		tree.ndb.SaveRoot(tree.root, version)
+		tree.ndb.SaveRoot(tree.root, version, false)
 	}
 	tree.ndb.Commit()
 	tree.version = version
@@ -500,4 +500,8 @@ func (tree *MutableTree) addOrphans(orphans []*Node) {
 		}
 		tree.orphans[string(node.hash)] = node.version
 	}
+}
+
+func (tree *MutableTree) GetVersions() map[int64]bool {
+	return tree.versions
 }

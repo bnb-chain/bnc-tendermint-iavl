@@ -196,6 +196,10 @@ func (node *Node) getByIndex(t *ImmutableTree, index int64) (key []byte, value [
 	return node.getRightNode(t).getByIndex(t, index-leftNode.size)
 }
 
+func (node *Node) Hash() []byte {
+	return node._hash()
+}
+
 // Computes the hash of the node without computing its descendants. Must be
 // called on nodes which have descendant node hashes already computed.
 func Hash(node *Node) []byte { return node._hash() }
@@ -351,7 +355,8 @@ func (node *Node) getLeftNode(t *ImmutableTree) *Node {
 	if node.leftNode != nil {
 		return node.leftNode
 	}
-	return t.ndb.GetNode(node.leftHash)
+	node.leftNode = t.ndb.GetNode(node.leftHash)
+	return node.leftNode
 }
 
 func GetRightNode(node *Node, t *ImmutableTree) *Node { return node.getRightNode(t) }
@@ -359,7 +364,8 @@ func (node *Node) getRightNode(t *ImmutableTree) *Node {
 	if node.rightNode != nil {
 		return node.rightNode
 	}
-	return t.ndb.GetNode(node.rightHash)
+	node.rightNode = t.ndb.GetNode(node.rightHash)
+	return node.rightNode
 }
 
 // NOTE: mutates height and size
@@ -374,6 +380,13 @@ func (node *Node) calcBalance(t *ImmutableTree) int {
 
 // traverse is a wrapper over traverseInRange when we want the whole tree
 func (node *Node) traverse(t *ImmutableTree, ascending bool, cb func(*Node) bool) bool {
+	return node.traverseInRange(t, nil, nil, ascending, false, 0, func(node *Node, depth uint8) bool {
+		return cb(node)
+	})
+}
+
+// traverseFirst is a wrapper over traverseInRange when we want the whole tree and will traverse the leaf nodes
+func (node *Node) traverseFirst(t *ImmutableTree, ascending bool, cb func(*Node) bool) bool {
 	return node.traverseInRange(t, nil, nil, ascending, false, 0, func(node *Node, depth uint8) bool {
 		return cb(node)
 	})

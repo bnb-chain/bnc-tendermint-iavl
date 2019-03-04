@@ -43,7 +43,7 @@ type nodeDB struct {
 	nodeCacheQueue *list.List               // LRU queue of cache elements. Used for deletion.
 }
 
-func newNodeDB(db dbm.DB, cacheSize int) *nodeDB {
+func NewNodeDB(db dbm.DB, cacheSize int) *nodeDB {
 	ndb := &nodeDB{
 		db:             db,
 		batch:          db.NewBatch(),
@@ -350,23 +350,23 @@ func (ndb *nodeDB) getRoots() (map[int64][]byte, error) {
 
 // SaveRoot creates an entry on disk for the given root, so that it can be
 // loaded later.
-func (ndb *nodeDB) SaveRoot(root *Node, version int64) error {
+func (ndb *nodeDB) SaveRoot(root *Node, version int64, isFirstVersion bool) error {
 	if len(root.hash) == 0 {
 		panic("Hash should not be empty")
 	}
-	return ndb.saveRoot(root.hash, version)
+	return ndb.saveRoot(root.hash, version, isFirstVersion)
 }
 
 // SaveEmptyRoot creates an entry on disk for an empty root.
-func (ndb *nodeDB) SaveEmptyRoot(version int64) error {
-	return ndb.saveRoot([]byte{}, version)
+func (ndb *nodeDB) SaveEmptyRoot(version int64, isFirstVersion bool) error {
+	return ndb.saveRoot([]byte{}, version, isFirstVersion)
 }
 
-func (ndb *nodeDB) saveRoot(hash []byte, version int64) error {
+func (ndb *nodeDB) saveRoot(hash []byte, version int64, isFirstVersion bool) error {
 	ndb.mtx.Lock()
 	defer ndb.mtx.Unlock()
 
-	if version != ndb.getLatestVersion()+1 {
+	if !isFirstVersion && version != ndb.getLatestVersion()+1 {
 		return fmt.Errorf("Must save consecutive versions. Expected %d, got %d", ndb.getLatestVersion()+1, version)
 	}
 

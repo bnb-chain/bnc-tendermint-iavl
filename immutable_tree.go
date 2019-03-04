@@ -1,6 +1,7 @@
 package iavl
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -24,7 +25,7 @@ func NewImmutableTree(db dbm.DB, cacheSize int) *ImmutableTree {
 	}
 	return &ImmutableTree{
 		// NodeDB-backed Tree.
-		ndb: newNodeDB(db, cacheSize),
+		ndb: NewNodeDB(db, cacheSize),
 	}
 }
 
@@ -114,6 +115,21 @@ func (t *ImmutableTree) Iterate(fn func(key []byte, value []byte) bool) (stopped
 		if node.height == 0 {
 			return fn(node.key, node.value)
 		}
+		return false
+	})
+}
+
+// used by state syncing
+func (t *ImmutableTree) IterateFirst(fn func(nodeBytes []byte)) {
+	if t.root == nil {
+		return
+	}
+	t.root.traverseFirst(t, true, func(node *Node) bool {
+		var b bytes.Buffer
+		if err := node.writeBytes(&b); err != nil {
+			panic(err)
+		}
+		fn(b.Bytes())
 		return false
 	})
 }
