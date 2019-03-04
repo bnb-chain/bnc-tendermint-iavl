@@ -135,7 +135,7 @@ func (node *Node) clone(version int64) *Node {
 	}
 }
 
-func Key(node *Node) []byte { return node.key }
+func Key(node *Node) []byte   { return node.key }
 func Value(node *Node) []byte { return node.value }
 
 func IsLeaf(node *Node) bool { return node.isLeaf() }
@@ -194,10 +194,6 @@ func (node *Node) getByIndex(t *ImmutableTree, index int64) (key []byte, value [
 		return leftNode.getByIndex(t, index)
 	}
 	return node.getRightNode(t).getByIndex(t, index-leftNode.size)
-}
-
-func (node *Node) Hash() []byte {
-	return node._hash()
 }
 
 // Computes the hash of the node without computing its descendants. Must be
