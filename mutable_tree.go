@@ -501,7 +501,3 @@ func (tree *MutableTree) addOrphans(orphans []*Node) {
 		tree.orphans[string(node.hash)] = node.version
 	}
 }
-
-func (tree *MutableTree) GetVersions() map[int64]bool {
-	return tree.versions
-}

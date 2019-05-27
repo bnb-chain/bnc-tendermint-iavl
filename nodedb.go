@@ -16,6 +16,10 @@ const (
 	hashSize  = tmhash.Size
 )
 
+// expose nodeDB so that state sync can directly save serialized node into
+// db without restore it as iavl tree first
+type NodeDB = nodeDB
+
 var (
 	// All node keys are prefixed with the byte 'n'. This ensures no collision is
 	// possible with the other keys, and makes them easier to traverse. They are indexed by the node hash.
