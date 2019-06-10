@@ -334,6 +334,7 @@ func (ndb *nodeDB) Commit() {
 	defer ndb.mtx.Unlock()
 
 	ndb.batch.Write()
+	ndb.batch.Close()
 	ndb.batch = ndb.db.NewBatch()
 }
 
