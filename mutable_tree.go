@@ -224,9 +224,10 @@ func (tree *MutableTree) Load() (int64, error) {
 	return tree.LoadVersion(int64(0))
 }
 
-// SetVersion set current version of the tree
+// SetVersion set current version of the tree. Only used in upgrade
 func (tree *MutableTree) SetVersion(version int64) {
 	tree.version = version
+	tree.ndb.latestVersion = version
 }
 
 // Returns the version number of the latest version found
