@@ -224,6 +224,12 @@ func (tree *MutableTree) Load() (int64, error) {
 	return tree.LoadVersion(int64(0))
 }
 
+// SetVersion set current version of the tree. Only used in upgrade
+func (tree *MutableTree) SetVersion(version int64) {
+	tree.version = version
+	tree.ndb.latestVersion = version
+}
+
 // Returns the version number of the latest version found
 func (tree *MutableTree) LoadVersion(targetVersion int64) (int64, error) {
 	roots, err := tree.ndb.getRoots()
@@ -500,8 +506,4 @@ func (tree *MutableTree) addOrphans(orphans []*Node) {
 		}
 		tree.orphans[string(node.hash)] = node.version
 	}
-}
-
-func (tree *MutableTree) GetVersions() map[int64]bool {
-	return tree.versions
 }
