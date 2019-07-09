@@ -1,5 +1,23 @@
 # Changelog
 
+
+## Pending
+
+- [IAVL] Ability to store temporary versions in memory only, and flush to disk every X versions. This should greatly reduce IO requirements and disk storage. (@mattkanwisher Loom Network)
+
+## 0.12.2 (March 13, 2019)
+
+IMPROVEMENTS
+
+ - Use Tendermint v0.30.2 and close batch after write (related pull request in Tendermint: https://github.com/tendermint/tendermint/pull/3397)
+
+
+## 0.12.1 (February 12, 2019)
+
+IMPROVEMENTS
+
+ - Use Tendermint v0.30
+
 ## 0.12.0 (November 26, 2018)
 
 BREAKING CHANGES
