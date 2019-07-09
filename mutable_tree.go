@@ -232,11 +232,6 @@ func (tree *MutableTree) SetVersion(version int64) {
 	tree.ndb.latestVersion = version
 }
 
-// Clear set current version of the tree. Only used in upgrade
-func (tree *MutableTree) ClearMemNodes() {
-	tree.ndb.memNodes = map[string]*Node{}
-}
-
 // Returns the version number of the latest version found
 func (tree *MutableTree) LoadVersion(targetVersion int64) (int64, error) {
 	roots, err := tree.ndb.getRoots()
@@ -400,7 +395,6 @@ func (tree *MutableTree) saveVersion(flushToDisk bool) ([]byte, int64, error) {
 	tree.ImmutableTree = tree.ImmutableTree.clone()
 	tree.lastSaved = tree.ImmutableTree.clone()
 	tree.orphans = map[string]int64{}
-	tree.ClearMemNodes()
 
 	return tree.Hash(), version, nil
 }
