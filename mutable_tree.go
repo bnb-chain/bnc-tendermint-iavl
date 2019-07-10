@@ -387,7 +387,11 @@ func (tree *MutableTree) saveVersion(flushToDisk bool) ([]byte, int64, error) {
 		tree.ndb.SaveOrphans(version, tree.orphans, flushToDisk)
 		tree.ndb.SaveRoot(tree.root, version, false)
 	}
-	tree.ndb.Commit()
+
+	go func() {
+		tree.ndb.Commit()
+	}()
+
 	tree.version = version
 	tree.versions[version] = true
 
