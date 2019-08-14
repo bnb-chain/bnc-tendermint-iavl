@@ -454,16 +454,12 @@ func (node *Node) traverseInRangeDiscardNode(t *ImmutableTree, start, end []byte
 	if !node.isLeaf() || (startOrAfter && beforeEnd) {
 		stop = cb(node, depth)
 		if stop {
-			node.leftHash = nil
-			node.rightHash = nil
 			node.leftNode = nil
 			node.rightNode = nil
-			distroyCurrentNode(node)
 			return stop
 		}
 	}
 	if node.isLeaf() {
-		distroyCurrentNode(node)
 		return stop
 	}
 
@@ -471,9 +467,7 @@ func (node *Node) traverseInRangeDiscardNode(t *ImmutableTree, start, end []byte
 		// check lower nodes, then higher
 		if afterStart {
 			child := node.getLeftNode(t)
-			node.leftHash = nil
 			node.leftNode = nil
-			distroyCurrentNode(node)
 			stop = child.traverseInRangeDiscardNode(t, start, end, ascending, inclusive, depth+1, cb)
 		}
 		if stop {
@@ -481,18 +475,14 @@ func (node *Node) traverseInRangeDiscardNode(t *ImmutableTree, start, end []byte
 		}
 		if beforeEnd {
 			child := node.getRightNode(t)
-			node.rightHash = nil
 			node.rightNode = nil
-			distroyCurrentNode(node)
 			stop = child.traverseInRangeDiscardNode(t, start, end, ascending, inclusive, depth+1, cb)
 		}
 	} else {
 		// check the higher nodes first
 		if beforeEnd {
 			child := node.getRightNode(t)
-			node.rightHash = nil
 			node.rightNode = nil
-			distroyCurrentNode(node)
 			stop = child.traverseInRangeDiscardNode(t, start, end, ascending, inclusive, depth+1, cb)
 		}
 		if stop {
@@ -500,22 +490,12 @@ func (node *Node) traverseInRangeDiscardNode(t *ImmutableTree, start, end []byte
 		}
 		if afterStart {
 			child := node.getLeftNode(t)
-			node.leftHash = nil
 			node.leftNode = nil
-			distroyCurrentNode(node)
 			stop = child.traverseInRangeDiscardNode(t, start, end, ascending, inclusive, depth+1, cb)
 		}
 	}
 
 	return stop
-}
-
-func distroyCurrentNode(node *Node) {
-	node.key = nil
-	node.value = nil
-	if node.leftHash == nil && node.rightHash == nil {
-		node = nil
-	}
 }
 
 // Only used in testing...
