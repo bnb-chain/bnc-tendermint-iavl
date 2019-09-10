@@ -383,7 +383,7 @@ func (node *Node) traverse(t *ImmutableTree, ascending bool, cb func(*Node) bool
 
 // traverseFirst is a wrapper over traverseInRange when we want the whole tree and will traverse the leaf nodes
 func (node *Node) traverseFirst(t *ImmutableTree, ascending bool, cb func(*Node) bool) bool {
-	return node.traverseInRange(t, nil, nil, ascending, false, 0, func(node *Node, depth uint8) bool {
+	return node.traverseInRangeDiscardNode(t, nil, nil, ascending, false, 0, func(node *Node, depth uint8) bool {
 		return cb(node)
 	})
 }
@@ -433,6 +433,65 @@ func (node *Node) traverseInRange(t *ImmutableTree, start, end []byte, ascending
 		}
 		if afterStart {
 			stop = node.getLeftNode(t).traverseInRange(t, start, end, ascending, inclusive, depth+1, cb)
+		}
+	}
+
+	return stop
+}
+
+// This method doesn't hold any reference to loaded node, its cb's responsibility to decide whether hold Node reference
+// If cb (like usage in state sync) don't need hold a reference to loaded Node, the memory footprint will be near to zero
+func (node *Node) traverseInRangeDiscardNode(t *ImmutableTree, start, end []byte, ascending bool, inclusive bool, depth uint8, cb func(*Node, uint8) bool) bool {
+	afterStart := start == nil || bytes.Compare(start, node.key) < 0
+	startOrAfter := start == nil || bytes.Compare(start, node.key) <= 0
+	beforeEnd := end == nil || bytes.Compare(node.key, end) < 0
+	if inclusive {
+		beforeEnd = end == nil || bytes.Compare(node.key, end) <= 0
+	}
+
+	// Run callback per inner/leaf node.
+	stop := false
+	if !node.isLeaf() || (startOrAfter && beforeEnd) {
+		stop = cb(node, depth)
+		if stop {
+			node.leftNode = nil
+			node.rightNode = nil
+			return stop
+		}
+	}
+	if node.isLeaf() {
+		return stop
+	}
+
+	if ascending {
+		// check lower nodes, then higher
+		if afterStart {
+			child := node.getLeftNode(t)
+			node.leftNode = nil
+			stop = child.traverseInRangeDiscardNode(t, start, end, ascending, inclusive, depth+1, cb)
+		}
+		if stop {
+			return stop
+		}
+		if beforeEnd {
+			child := node.getRightNode(t)
+			node.rightNode = nil
+			stop = child.traverseInRangeDiscardNode(t, start, end, ascending, inclusive, depth+1, cb)
+		}
+	} else {
+		// check the higher nodes first
+		if beforeEnd {
+			child := node.getRightNode(t)
+			node.rightNode = nil
+			stop = child.traverseInRangeDiscardNode(t, start, end, ascending, inclusive, depth+1, cb)
+		}
+		if stop {
+			return stop
+		}
+		if afterStart {
+			child := node.getLeftNode(t)
+			node.leftNode = nil
+			stop = child.traverseInRangeDiscardNode(t, start, end, ascending, inclusive, depth+1, cb)
 		}
 	}
 
