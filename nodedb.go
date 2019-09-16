@@ -70,11 +70,11 @@ func (ndb *nodeDB) GetNode(hash []byte) *Node {
 	}
 
 	// Check the cache.
-	if elem, ok := ndb.nodeCache[string(hash)]; ok {
-		// Already exists. Move to back of nodeCacheQueue.
-		ndb.nodeCacheQueue.MoveToBack(elem)
-		return elem.Value.(*Node)
-	}
+	//if elem, ok := ndb.nodeCache[string(hash)]; ok {
+	//	// Already exists. Move to back of nodeCacheQueue.
+	//	ndb.nodeCacheQueue.MoveToBack(elem)
+	//	return elem.Value.(*Node)
+	//}
 
 	// Doesn't exist, load.
 	buf := ndb.db.Get(ndb.nodeKey(hash))
@@ -89,7 +89,7 @@ func (ndb *nodeDB) GetNode(hash []byte) *Node {
 
 	node.hash = hash
 	node.persisted = true
-	ndb.cacheNode(node)
+	// ndb.cacheNode(node)
 
 	return node
 }
@@ -107,15 +107,16 @@ func (ndb *nodeDB) SaveNode(node *Node) {
 	}
 
 	// Save node bytes to db.
-	buf := new(bytes.Buffer)
-	if err := node.writeBytes(buf); err != nil {
+	var buf bytes.Buffer
+	buf.Grow(node.aminoSize())
+	if err := node.writeBytes(&buf); err != nil {
 		panic(err)
 	}
 	ndb.batch.Set(ndb.nodeKey(node.hash), buf.Bytes())
 	debug("BATCH SAVE %X %p\n", node.hash, node)
 
 	node.persisted = true
-	ndb.cacheNode(node)
+	// ndb.cacheNode(node)
 }
 
 // Has checks if a hash exists in the database.
@@ -151,8 +152,8 @@ func (ndb *nodeDB) SaveBranch(node *Node) []byte {
 	node._hash()
 	ndb.SaveNode(node)
 
-	node.leftNode = nil
-	node.rightNode = nil
+	// node.leftNode = nil
+	// node.rightNode = nil
 
 	return node.hash
 }
