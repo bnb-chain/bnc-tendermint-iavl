@@ -366,6 +366,7 @@ func (node *Node) getLeftNode(t *ImmutableTree) *Node {
 		return node.leftNode
 	}
 	node.leftNode = t.ndb.GetNode(node.leftHash)
+	t.nodeVersions.Inc1(node.leftNode.version)
 	return node.leftNode
 }
 
@@ -375,6 +376,7 @@ func (node *Node) getRightNode(t *ImmutableTree) *Node {
 		return node.rightNode
 	}
 	node.rightNode = t.ndb.GetNode(node.rightHash)
+	t.nodeVersions.Inc1(node.rightNode.version)
 	return node.rightNode
 }
 
