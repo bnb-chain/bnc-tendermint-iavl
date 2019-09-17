@@ -12,9 +12,10 @@ import (
 // swapping the internal root with a new one, while the container is mutable.
 // Note that this tree is not thread-safe.
 type ImmutableTree struct {
-	root    *Node
-	ndb     *nodeDB
-	version int64
+	root         *Node
+	ndb          *nodeDB
+	nodeVersions *NodeVersions
+	version      int64
 }
 
 // NewImmutableTree creates both in-memory and persistent instances
@@ -25,7 +26,8 @@ func NewImmutableTree(db dbm.DB, cacheSize int) *ImmutableTree {
 	}
 	return &ImmutableTree{
 		// NodeDB-backed Tree.
-		ndb: NewNodeDB(db, cacheSize),
+		ndb:          NewNodeDB(db, cacheSize),
+		nodeVersions: NewNodeVersions(maxVersions, maxNodes, 0),
 	}
 }
 
@@ -166,9 +168,10 @@ func (t *ImmutableTree) IterateRangeInclusive(start, end []byte, ascending bool,
 // Used internally by MutableTree.
 func (t *ImmutableTree) clone() *ImmutableTree {
 	return &ImmutableTree{
-		root:    t.root,
-		ndb:     t.ndb,
-		version: t.version,
+		root:         t.root,
+		ndb:          t.ndb,
+		version:      t.version,
+		nodeVersions: t.nodeVersions,
 	}
 }
 
