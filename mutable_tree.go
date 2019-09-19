@@ -3,6 +3,7 @@ package iavl
 import (
 	"bytes"
 	"fmt"
+	"time"
 
 	cmn "github.com/tendermint/tendermint/libs/common"
 	dbm "github.com/tendermint/tendermint/libs/db"
@@ -398,7 +399,9 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 		return nil, version, err
 	}
 	if maxPruneVersion > 0 {
+		startPruneTime := time.Now()
 		tree.PruneInMemory(maxPruneVersion)
+		fmt.Println("version", version, "cost", time.Now().Sub(startPruneTime).Nanoseconds(), "ms")
 	}
 	return tree.Hash(), version, nil
 }
