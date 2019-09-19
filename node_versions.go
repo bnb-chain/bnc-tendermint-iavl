@@ -59,7 +59,7 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, err err
 		return 0, fmt.Errorf("expect version %d, got %d", nv.nextVersion, newVersion)
 	}
 
-	fmt.Println("total nodes before commit.", "version", newVersion, "total", nv.totalNodes)
+	fmt.Println(nv.totalNodes, "total nodes before commit.", "version", newVersion)
 	for version, num := range nv.changes {
 		if version > nv.nextVersion {
 			// should not happen
@@ -91,6 +91,8 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, err err
 	maxPruneVersion, pruneNum = nv.prune()
 	fmt.Println("version:", newVersion, "\tmaxPruneVersion:", maxPruneVersion, "\tpruneNum:", pruneNum)
 	nv.nums[nv.nextVersionIdx] = nv.changes[nv.nextVersion]
+	nv.totalNodes += nv.changes[nv.nextVersion] - pruneNum
+	fmt.Println(nv.totalNodes, "total nodes after prune", "version", newVersion)
 	nv.changes = make(map[int64]int, len(nv.changes))
 	nv.nextVersion++
 	return maxPruneVersion, nil
