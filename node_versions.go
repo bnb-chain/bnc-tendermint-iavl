@@ -54,16 +54,56 @@ func (nv *NodeVersions) Update(fromVersion, toVersion int64) {
 	nv.changes[toVersion]++
 }
 
-func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, err error) {
+func (nv *NodeVersions) Reset(tree *ImmutableTree) {
+	nv.nums = make([]int, nv.maxVersions, nv.maxVersions)
+	nv.changes = make(map[int64]int, 32)
+	nv.nextVersionIdx = 0
+	nv.totalNodes =     0
+
+	if tree == nil || tree.root == nil {
+		nv.firstVersion = 0
+		nv.nextVersion = 1
+		return
+	}
+
+	nv.firstVersion = tree.version
+	nv.nextVersion = tree.version+1
+
+	var iter func(root *Node)
+	iter = func(root *Node) {
+		if root == nil {
+			return
+		}
+		// root's version is the biggest in its branch.
+		iter(root.leftNode)
+		nv.Inc1(root.version)
+		iter(root.rightNode)
+	}
+	iter(tree.root)
+	for version, num := range nv.changes {
+		idx := nv.getIndex(version)
+		if idx < 0 {
+			continue
+		}
+		nv.nums[idx] = num
+		if version < nv.firstVersion {
+			nv.firstVersion = version
+		}
+		nv.totalNodes += num
+	}
+}
+
+func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, pruneNum int, err error) {
 	if newVersion != nv.nextVersion {
-		return 0, fmt.Errorf("expect version %d, got %d", nv.nextVersion, newVersion)
+		return 0, 0, fmt.Errorf("expect version %d, got %d", nv.nextVersion, newVersion)
 	}
 
 	fmt.Println(nv.totalNodes, "total nodes before commit.", "version", newVersion)
+	olderVersionNums := 0
 	for version, num := range nv.changes {
 		if version > nv.nextVersion {
 			// should not happen
-			return 0, fmt.Errorf("some changes happen on a future version %d, latest version is %d", version, newVersion)
+			return 0, 0, fmt.Errorf("some changes happen on a future version %d, latest version is %d", version, newVersion)
 		} else if version == nv.nextVersion {
 			continue
 			// skip it first, will handle this version later to avoid losing the original num of version (nv.nextVersion - nv.maxVersions)
@@ -74,7 +114,7 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, err err
 
 		versionIdx := nv.getIndex(version)
 		if versionIdx < 0 {
-			// skip the versions we do not need
+			olderVersionNums += num
 			continue
 		}
 
@@ -86,25 +126,24 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, err err
 			nv.firstVersion = version
 		}
 	}
-	fmt.Println(nv.totalNodes, "total nodes before prune", "version", newVersion)
-	var pruneNum int
+	fmt.Println(nv.totalNodes, "total nodes before prune", "version", newVersion, "changes", nv.changes)
 	maxPruneVersion, pruneNum = nv.prune()
+	pruneNum += olderVersionNums
 	fmt.Println("version:", newVersion, "\tmaxPruneVersion:", maxPruneVersion, "\tpruneNum:", pruneNum)
 	nv.nums[nv.nextVersionIdx] = nv.changes[nv.nextVersion]
 	nv.totalNodes += nv.changes[nv.nextVersion] - pruneNum
 	fmt.Println(nv.totalNodes, "total nodes after prune", "version", newVersion)
+
 	nv.changes = make(map[int64]int, len(nv.changes))
 	nv.nextVersion++
-	return maxPruneVersion, nil
+	nv.nextVersionIdx = (nv.nextVersionIdx+1)%nv.maxVersions
+	nv.firstVersion = maxPruneVersion + 1
+	return maxPruneVersion, pruneNum, nil
 }
 
 func (nv *NodeVersions) prune() (maxPruneVersion int64, prunedNum int) {
 	if nv.totalNodes <= nv.maxNodes {
-		if minVersionNum := nv.nums[nv.nextVersionIdx]; minVersionNum == 0 {
-			return -1, 0
-		} else {
-			return nv.nextVersion - int64(nv.maxVersions), minVersionNum
-		}
+		return nv.nextVersion - int64(nv.maxVersions), nv.nums[nv.nextVersionIdx]
 	}
 	toPruneNum := nv.totalNodes - nv.maxNodes
 	i:= nv.getIndex(nv.firstVersion)  // start from the idx of firstVersion to skip some zero nums.
@@ -116,14 +155,9 @@ func (nv *NodeVersions) prune() (maxPruneVersion int64, prunedNum int) {
 				break
 			}
 		}
-		if i < nv.maxVersions {
-			i++
-		} else {
-			i =	0
-		}
+		i = (i+1) % nv.maxVersions
 	}
 	maxPruneVersion = nv.getVersion(i)
-	nv.firstVersion = maxPruneVersion + 1
 	return maxPruneVersion, prunedNum
 }
 

@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	maxVersions = 1000000
-	maxNodes    = 500000
+	defaultMaxVersions = 1000000
+	defaultMaxNodes    = 500000
 )
 
 // ErrVersionDoesNotExist is returned if a requested version does not exist.
@@ -29,6 +29,10 @@ type MutableTree struct {
 
 // NewMutableTree returns a new tree with the specified cache size and datastore.
 func NewMutableTree(db dbm.DB, cacheSize int) *MutableTree {
+	return NewMutableTreeWithOpts(db, cacheSize, defaultMaxVersions, defaultMaxNodes)
+}
+
+func NewMutableTreeWithOpts(db dbm.DB, cacheSize, maxVersions int, maxNodes int) *MutableTree {
 	ndb := NewNodeDB(db, cacheSize)
 	nodeVersions := NewNodeVersions(maxVersions, maxNodes, 0)
 	head := &ImmutableTree{
@@ -277,7 +281,7 @@ func (tree *MutableTree) LoadVersion(targetVersion int64) (int64, error) {
 			targetVersion, latestVersion)
 	}
 
-	nodeVersions := NewNodeVersions(maxVersions, maxNodes, latestVersion)
+	nodeVersions := NewNodeVersions(tree.nodeVersions.maxVersions, tree.nodeVersions.maxNodes, latestVersion)
 	t := &ImmutableTree{
 		ndb:          tree.ndb,
 		version:      latestVersion,
@@ -366,7 +370,7 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 			tree.ImmutableTree = tree.ImmutableTree.clone()
 			tree.lastSaved = tree.ImmutableTree.clone()
 			tree.orphans = map[string]int64{}
-			tree.nodeVersions = NewNodeVersions(maxVersions, maxNodes, version)
+			tree.nodeVersions.Reset(tree.ImmutableTree)
 			return existingHash, version, nil
 		}
 		return nil, version, fmt.Errorf("version %d was already saved to different hash %X (existing hash %X)",
@@ -394,17 +398,16 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 	tree.ImmutableTree = tree.ImmutableTree.clone()
 	tree.lastSaved = tree.ImmutableTree.clone()
 	tree.orphans = map[string]int64{}
-	maxPruneVersion, err := tree.nodeVersions.Commit(version)
+	maxPruneVersion, pruneNum, err := tree.nodeVersions.Commit(version)
 	if err != nil {
 		return nil, version, err
 	}
-	if maxPruneVersion > 0 {
+	if pruneNum > 0 {
 		startPruneTime := time.Now()
 		tree.PruneInMemory(maxPruneVersion)
-		fmt.Println("version", version, "cost", time.Now().Sub(startPruneTime).Nanoseconds(), "ms")
-	 } else {
-	 	fmt.Println()
+		fmt.Println("version", version, "cost", time.Now().Sub(startPruneTime).Nanoseconds(), "ns")
 	}
+	fmt.Println()
 	return tree.Hash(), version, nil
 }
 
@@ -486,8 +489,8 @@ func (tree *MutableTree) rotateRight(node *Node, orphans *[]*Node) *Node {
 	node = node.clone(version)
 	orphaned := node.getLeftNode(tree.ImmutableTree)
 	*orphans = append(*orphans, orphaned)
-	newNode := orphaned.clone(version)
 	tree.nodeVersions.Update(orphaned.version, version)
+	newNode := orphaned.clone(version)
 
 	newNoderHash, newNoderCached := newNode.rightHash, newNode.rightNode
 	newNode.rightHash, newNode.rightNode = node.hash, node
@@ -507,8 +510,8 @@ func (tree *MutableTree) rotateLeft(node *Node, orphans *[]*Node) *Node {
 	node = node.clone(version)
 	orphaned := node.getRightNode(tree.ImmutableTree)
 	*orphans = append(*orphans, orphaned)
-	newNode := orphaned.clone(version)
 	tree.nodeVersions.Update(orphaned.version, version)
+	newNode := orphaned.clone(version)
 
 	newNodelHash, newNodelCached := newNode.leftHash, newNode.leftNode
 	newNode.leftHash, newNode.leftNode = node.hash, node
@@ -537,7 +540,7 @@ func (tree *MutableTree) balance(node *Node, orphans *[]*Node) (newSelf *Node) {
 		// Left Right Case
 		left := node.getLeftNode(tree.ImmutableTree)
 		*orphans = append(*orphans, left)
-		tree.nodeVersions.Dec1(left.version)
+		// tree.nodeVersions.Dec1(left.version)
 		node.leftHash = nil
 		node.leftNode = tree.rotateLeft(left, orphans)
 		newNode := tree.rotateRight(node, orphans)
@@ -552,7 +555,7 @@ func (tree *MutableTree) balance(node *Node, orphans *[]*Node) (newSelf *Node) {
 		// Right Left Case
 		right := node.getRightNode(tree.ImmutableTree)
 		*orphans = append(*orphans, right)
-		tree.nodeVersions.Dec1(right.version)
+		//tree.nodeVersions.Dec1(right.version)
 		node.rightHash = nil
 		node.rightNode = tree.rotateRight(right, orphans)
 		newNode := tree.rotateLeft(node, orphans)

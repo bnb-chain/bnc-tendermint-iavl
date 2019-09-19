@@ -27,7 +27,7 @@ func NewImmutableTree(db dbm.DB, cacheSize int) *ImmutableTree {
 	return &ImmutableTree{
 		// NodeDB-backed Tree.
 		ndb:          NewNodeDB(db, cacheSize),
-		nodeVersions: NewNodeVersions(maxVersions, maxNodes, 0),
+		nodeVersions: NewNodeVersions(defaultMaxVersions, defaultMaxNodes, 0),
 	}
 }
 
@@ -182,5 +182,20 @@ func (t *ImmutableTree) nodeSize() int {
 		size++
 		return false
 	})
+	return size
+}
+
+func (t *ImmutableTree) memoryNodeSize() int {
+	size := 0
+	var iter func(*Node)
+	iter = func(node *Node) {
+		if node == nil {
+			return
+		}
+		size++
+		iter(node.leftNode)
+		iter(node.rightNode)
+	}
+	iter(t.root)
 	return size
 }
