@@ -402,6 +402,8 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 		startPruneTime := time.Now()
 		tree.PruneInMemory(maxPruneVersion)
 		fmt.Println("version", version, "cost", time.Now().Sub(startPruneTime).Nanoseconds(), "ms")
+	 } else {
+	 	fmt.Println()
 	}
 	return tree.Hash(), version, nil
 }
