@@ -1,7 +1,6 @@
 package iavl
 
 import (
-	"errors"
 	"fmt"
 )
 
@@ -60,6 +59,7 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, err err
 		return 0, fmt.Errorf("expect version %d, got %d", nv.nextVersion, newVersion)
 	}
 
+	fmt.Println("total nodes before commit.", "version", newVersion, "total", nv.totalNodes)
 	for version, num := range nv.changes {
 		if version > nv.nextVersion {
 			// should not happen
@@ -86,8 +86,10 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, err err
 			nv.firstVersion = version
 		}
 	}
-
-	maxPruneVersion, _ = nv.prune()
+	fmt.Println(nv.totalNodes, "total nodes before prune", "version", newVersion)
+	var pruneNum int
+	maxPruneVersion, pruneNum = nv.prune()
+	fmt.Println("version:", newVersion, "\tmaxPruneVersion:", maxPruneVersion, "\tpruneNum:", pruneNum)
 	nv.nums[nv.nextVersionIdx] = nv.changes[nv.nextVersion]
 	nv.changes = make(map[int64]int, len(nv.changes))
 	nv.nextVersion++
@@ -140,51 +142,3 @@ func (nv *NodeVersions) getVersion(idx int) int64 {
 	}
 	return nv.nextVersion - int64(nv.nextVersionIdx - idx)
 }
-
-type Int64Ring struct {
-	buf  []int64
-	tail int
-	cap  int
-}
-
-func NewInt64Ring(cap int) *Int64Ring {
-	return &Int64Ring{
-		buf:  make([]int64, 0, cap),
-		tail: 0,
-		cap:  cap,
-	}
-}
-
-func (q *Int64Ring) Push(v int64) {
-	if len(q.buf) < q.cap {
-		q.buf = append(q.buf, v)
-		q.tail++
-	} else {
-		q.buf[q.tail] = v
-		q.tail = (q.tail + 1) % q.cap
-	}
-}
-
-func (q *Int64Ring) Get(idx int) (int64, error) {
-	if len(q.buf) < q.cap {
-		if idx >= len(q.buf) {
-			return 0, errors.New("index out of range")
-		}
-		return q.buf[idx], nil
-	}
-	return q.buf[(q.tail+idx)%q.cap], nil
-}
-
-func (q *Int64Ring) Set(idx int, v int64) error {
-	if len(q.buf) < q.cap {
-		if idx >= len(q.buf) {
-			return errors.New("index out of range")
-		}
-		q.buf[idx] = v
-	} else {
-		q.buf[(q.tail+idx)%q.cap] = v
-	}
-	return nil
-}
-
-
