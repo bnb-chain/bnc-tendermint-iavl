@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	defaultMaxVersions = 1000000
-	defaultMaxNodes    = 500000
+	defaultMaxVersions = 150
+	defaultMaxNodes    = 80000
 )
 
 // ErrVersionDoesNotExist is returned if a requested version does not exist.
@@ -406,6 +406,11 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 		startPruneTime := time.Now()
 		tree.PruneInMemory(maxPruneVersion)
 		fmt.Println("version", version, "cost", time.Now().Sub(startPruneTime).Nanoseconds(), "ns")
+	}
+	mNodes := tree.memoryNodeSize()
+	recordNodes := tree.nodeVersions.totalNodes
+	if mNodes != recordNodes {
+		panic(fmt.Errorf("BUG!!! mNode=%d, recordNodes=%d", mNodes, recordNodes))
 	}
 	fmt.Println()
 	return tree.Hash(), version, nil
