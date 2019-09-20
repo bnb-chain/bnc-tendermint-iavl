@@ -2,6 +2,7 @@ package iavl
 
 import (
 	"fmt"
+	"time"
 )
 
 // not Thread-Safe
@@ -94,11 +95,11 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 }
 
 func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, pruneNum int, err error) {
+	startTime := time.Now()
 	if newVersion != nv.nextVersion {
 		return 0, 0, fmt.Errorf("expect version %d, got %d", nv.nextVersion, newVersion)
 	}
 
-	fmt.Println(nv.totalNodes, "total nodes before commit.", "version", newVersion)
 	olderVersionNums := 0
 	for version, num := range nv.changes {
 		if version > nv.nextVersion {
@@ -126,18 +127,16 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, pruneNu
 			nv.firstVersion = version
 		}
 	}
-	fmt.Println(nv.totalNodes, "total nodes before prune", "version", newVersion, "changes", nv.changes)
 	maxPruneVersion, pruneNum = nv.prune()
 	pruneNum += olderVersionNums
-	fmt.Println("version:", newVersion, "\tmaxPruneVersion:", maxPruneVersion, "\tpruneNum:", pruneNum)
 	nv.nums[nv.nextVersionIdx] = nv.changes[nv.nextVersion]
 	nv.totalNodes += nv.changes[nv.nextVersion] - pruneNum
-	fmt.Println(nv.totalNodes, "total nodes after prune", "version", newVersion)
 
 	nv.changes = make(map[int64]int, len(nv.changes))
 	nv.nextVersion++
 	nv.nextVersionIdx = (nv.nextVersionIdx+1)%nv.maxVersions
 	nv.firstVersion = maxPruneVersion + 1
+	fmt.Println(newVersion, "commit cost", time.Now().Sub(startTime).Nanoseconds(), "ns")
 	return maxPruneVersion, pruneNum, nil
 }
 
