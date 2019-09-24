@@ -25,7 +25,7 @@ func BenchmarkMutableTree_Set(b *testing.B) {
 	}
 }
 
-func TestMutableTree_Prune(t *testing.T) {
+func TestMutableTree_SetAndPrune(t *testing.T) {
 	db := db.NewDB("test", db.MemDBBackend, "")
 	tree := NewMutableTreeWithOpts(db, 0, 5, 5)
 	tree.Set([]byte("k1"), []byte("v1"))
@@ -53,7 +53,6 @@ func TestMutableTree_Prune(t *testing.T) {
 	tree.SaveVersion()
 	require.Equal(t, 9, tree.memoryNodeSize())
 
-
 	tree.Set([]byte("k6"), []byte("v1"))
 	tree.Set([]byte("k7"), []byte("v1"))
 	tree.Set([]byte("k8"), []byte("v1"))
@@ -75,4 +74,29 @@ func TestMutableTree_Prune(t *testing.T) {
 	tree.SaveVersion()
 	fmt.Println()
 	PrintTreeByLevel(tree.ImmutableTree)
+}
+
+func TestMutableTree_RemoveAndPrune(t *testing.T) {
+	db := db.NewDB("test", db.MemDBBackend, "")
+	tree := NewMutableTreeWithOpts(db, 0, 5, 5)
+	tree.Set([]byte("k1"), []byte("v1"))
+	tree.Set([]byte("k2"), []byte("v1"))
+	tree.Set([]byte("k3"), []byte("v1"))
+	tree.Set([]byte("k4"), []byte("v1"))
+	tree.Set([]byte("k5"), []byte("v1"))
+	//tree.Set([]byte("k6"), []byte("v1"))
+	//tree.Set([]byte("k7"), []byte("v1"))
+	//tree.Set([]byte("k8"), []byte("v1"))
+	//tree.Set([]byte("k9"), []byte("v1"))
+	PrintTreeByLevel(tree.ImmutableTree)
+	tree.SaveVersion()
+	PrintTreeByLevel(tree.ImmutableTree)
+	tree.SaveVersion()
+	PrintTreeByLevel(tree.ImmutableTree)
+	tree.Remove([]byte("k5"))
+	tree.SaveVersion()
+	PrintTreeByLevel(tree.ImmutableTree)
+	tree.Remove([]byte("k2"))
+	PrintTreeByLevel(tree.ImmutableTree)
+	tree.SaveVersion()
 }

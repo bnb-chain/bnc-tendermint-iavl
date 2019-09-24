@@ -16,22 +16,41 @@ type ImmutableTree struct {
 	ndb          *nodeDB
 	nodeVersions *NodeVersions
 	version      int64
+	isEmpty      bool
 }
 
 // NewImmutableTree creates both in-memory and persistent instances
 func NewImmutableTree(db dbm.DB, cacheSize int) *ImmutableTree {
 	if db == nil {
 		// In-memory Tree.
-		return &ImmutableTree{}
+		return &ImmutableTree{isEmpty: true}
 	}
 	return &ImmutableTree{
 		// NodeDB-backed Tree.
 		ndb:          NewNodeDB(db, cacheSize),
 		nodeVersions: NewNodeVersions(defaultMaxVersions, defaultMaxNodes, 0),
+		isEmpty:      true,
 	}
 }
 
-func GetRoot(t *ImmutableTree) *Node {
+func (t *ImmutableTree) GetRoot() *Node {
+	// when t.root is nil, either the root is also pruned from memory, or the root node is removed and tree is empty.
+	if t.isEmpty {
+		if t.root != nil {
+			// correct isEmpty
+			t.isEmpty = false
+			return t.root
+		}
+		return nil
+	}
+	if t.root == nil {
+		if rootHash := t.ndb.getRoot(t.version); len(rootHash) != 0 {
+			t.root = t.ndb.GetNode(rootHash)
+			t.nodeVersions.Inc1(t.root.version)
+		} else {
+			t.isEmpty = true
+		}
+	}
 	return t.root
 }
 
@@ -47,10 +66,11 @@ func (t *ImmutableTree) String() string {
 
 // Size returns the number of leaf nodes in the tree.
 func (t *ImmutableTree) Size() int64 {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return 0
 	}
-	return t.root.size
+	return root.size
 }
 
 // Version returns the version of the tree.
@@ -60,60 +80,67 @@ func (t *ImmutableTree) Version() int64 {
 
 // Height returns the height of the tree.
 func (t *ImmutableTree) Height() int8 {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return 0
 	}
-	return t.root.height
+	return root.height
 }
 
 // Has returns whether or not a key exists.
 func (t *ImmutableTree) Has(key []byte) bool {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return false
 	}
-	return t.root.has(t, key)
+	return root.has(t, key)
 }
 
 // Hash returns the root hash.
 func (t *ImmutableTree) Hash() []byte {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return nil
 	}
-	hash, _ := t.root.hashWithCount()
+	hash, _ := root.hashWithCount()
 	return hash
 }
 
 // hashWithCount returns the root hash and hash count.
 func (t *ImmutableTree) hashWithCount() ([]byte, int64) {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return nil, 0
 	}
-	return t.root.hashWithCount()
+	return root.hashWithCount()
 }
 
 // Get returns the index and value of the specified key if it exists, or nil
 // and the next index, if it doesn't.
 func (t *ImmutableTree) Get(key []byte) (index int64, value []byte) {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return 0, nil
 	}
-	return t.root.get(t, key)
+	return root.get(t, key)
 }
 
 // GetByIndex gets the key and value at the specified index.
 func (t *ImmutableTree) GetByIndex(index int64) (key []byte, value []byte) {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return nil, nil
 	}
-	return t.root.getByIndex(t, index)
+	return root.getByIndex(t, index)
 }
 
 // Iterate iterates over all keys of the tree, in order.
 func (t *ImmutableTree) Iterate(fn func(key []byte, value []byte) bool) (stopped bool) {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return false
 	}
-	return t.root.traverse(t, true, func(node *Node) bool {
+	return root.traverse(t, true, func(node *Node) bool {
 		if node.height == 0 {
 			return fn(node.key, node.value)
 		}
@@ -123,10 +150,11 @@ func (t *ImmutableTree) Iterate(fn func(key []byte, value []byte) bool) (stopped
 
 // used by state syncing
 func (t *ImmutableTree) IterateFirst(fn func(nodeBytes []byte)) {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return
 	}
-	t.root.traverseFirst(t, true, func(node *Node) bool {
+	root.traverseFirst(t, true, func(node *Node) bool {
 		var b bytes.Buffer
 		if err := node.writeBytes(&b); err != nil {
 			panic(err)
@@ -139,10 +167,11 @@ func (t *ImmutableTree) IterateFirst(fn func(nodeBytes []byte)) {
 // IterateRange makes a callback for all nodes with key between start and end non-inclusive.
 // If either are nil, then it is open on that side (nil, nil is the same as Iterate)
 func (t *ImmutableTree) IterateRange(start, end []byte, ascending bool, fn func(key []byte, value []byte) bool) (stopped bool) {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return false
 	}
-	return t.root.traverseInRange(t, start, end, ascending, false, 0, func(node *Node, _ uint8) bool {
+	return root.traverseInRange(t, start, end, ascending, false, 0, func(node *Node, _ uint8) bool {
 		if node.height == 0 {
 			return fn(node.key, node.value)
 		}
@@ -153,10 +182,11 @@ func (t *ImmutableTree) IterateRange(start, end []byte, ascending bool, fn func(
 // IterateRangeInclusive makes a callback for all nodes with key between start and end inclusive.
 // If either are nil, then it is open on that side (nil, nil is the same as Iterate)
 func (t *ImmutableTree) IterateRangeInclusive(start, end []byte, ascending bool, fn func(key, value []byte, version int64) bool) (stopped bool) {
-	if t.root == nil {
+	root := t.GetRoot()
+	if root == nil {
 		return false
 	}
-	return t.root.traverseInRange(t, start, end, ascending, true, 0, func(node *Node, _ uint8) bool {
+	return root.traverseInRange(t, start, end, ascending, true, 0, func(node *Node, _ uint8) bool {
 		if node.height == 0 {
 			return fn(node.key, node.value, node.version)
 		}
@@ -172,13 +202,18 @@ func (t *ImmutableTree) clone() *ImmutableTree {
 		ndb:          t.ndb,
 		version:      t.version,
 		nodeVersions: t.nodeVersions,
+		isEmpty:      t.isEmpty,
 	}
 }
 
 // nodeSize is like Size, but includes inner nodes too.
 func (t *ImmutableTree) nodeSize() int {
+	root := t.GetRoot()
+	if root == nil {
+		return 0
+	}
 	size := 0
-	t.root.traverse(t, true, func(n *Node) bool {
+	root.traverse(t, true, func(n *Node) bool {
 		size++
 		return false
 	})

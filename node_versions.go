@@ -7,11 +7,11 @@ import (
 
 // not Thread-Safe
 type NodeVersions struct {
-	nums []int
-	changes map[int64]int  // version -> num, changes will be merged to nums when commit
+	nums    []int
+	changes map[int64]int // version -> num, changes will be merged to nums when commit
 
 	maxVersions int
-	maxNodes int
+	maxNodes    int
 
 	firstVersion   int64
 	nextVersion    int64
@@ -22,13 +22,13 @@ type NodeVersions struct {
 
 func NewNodeVersions(maxVersions int, maxNodes int, lastVersion int64) *NodeVersions {
 	return &NodeVersions{
-		nums: make([]int, maxVersions, maxVersions),
-		changes: make(map[int64]int, 32),
+		nums:        make([]int, maxVersions, maxVersions),
+		changes:     make(map[int64]int, 32),
 		maxVersions: maxVersions,
-		maxNodes:maxNodes,
+		maxNodes:    maxNodes,
 
 		firstVersion:   lastVersion,
-		nextVersion:    lastVersion+1,
+		nextVersion:    lastVersion + 1,
 		nextVersionIdx: 0,
 		totalNodes:     0,
 	}
@@ -59,7 +59,7 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 	nv.nums = make([]int, nv.maxVersions, nv.maxVersions)
 	nv.changes = make(map[int64]int, 32)
 	nv.nextVersionIdx = 0
-	nv.totalNodes =     0
+	nv.totalNodes = 0
 
 	if tree == nil || tree.root == nil {
 		nv.firstVersion = 0
@@ -68,7 +68,7 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 	}
 
 	nv.firstVersion = tree.version
-	nv.nextVersion = tree.version+1
+	nv.nextVersion = tree.version + 1
 
 	var iter func(root *Node)
 	iter = func(root *Node) {
@@ -92,8 +92,10 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 		}
 		nv.totalNodes += num
 	}
+	nv.changes = make(map[int64]int, len(nv.changes))
 }
 
+// we never prune nodes that have the same version with root node version.
 func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, pruneNum int, err error) {
 	startTime := time.Now()
 	if newVersion != nv.nextVersion {
@@ -128,16 +130,20 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, pruneNu
 		}
 	}
 	maxPruneVersion, pruneNum = nv.prune()
-	pruneNum += olderVersionNums
 	nv.nums[nv.nextVersionIdx] = nv.changes[nv.nextVersion]
 	nv.totalNodes += nv.changes[nv.nextVersion] - pruneNum
+	pruneNum += olderVersionNums
 
 	nv.changes = make(map[int64]int, len(nv.changes))
 	nv.nextVersion++
-	nv.nextVersionIdx = (nv.nextVersionIdx+1)%nv.maxVersions
+	nv.nextVersionIdx = nv.getNextIdx(nv.nextVersionIdx)
 	nv.firstVersion = maxPruneVersion + 1
 	fmt.Println(newVersion, "commit cost", time.Now().Sub(startTime).Nanoseconds(), "ns")
 	return maxPruneVersion, pruneNum, nil
+}
+
+func (nv *NodeVersions) Rollback() {
+	nv.changes = make(map[int64]int, len(nv.changes))
 }
 
 func (nv *NodeVersions) prune() (maxPruneVersion int64, prunedNum int) {
@@ -145,7 +151,7 @@ func (nv *NodeVersions) prune() (maxPruneVersion int64, prunedNum int) {
 		return nv.nextVersion - int64(nv.maxVersions), nv.nums[nv.nextVersionIdx]
 	}
 	toPruneNum := nv.totalNodes - nv.maxNodes
-	i:= nv.getIndex(nv.firstVersion)  // start from the idx of firstVersion to skip some zero nums.
+	i := nv.getIndex(nv.firstVersion) // start from the idx of firstVersion to skip some zero nums.
 	for {
 		if nv.nums[i] > 0 {
 			prunedNum += nv.nums[i]
@@ -154,17 +160,25 @@ func (nv *NodeVersions) prune() (maxPruneVersion int64, prunedNum int) {
 				break
 			}
 		}
-		i = (i+1) % nv.maxVersions
+		i = nv.getNextIdx(i)
 	}
 	maxPruneVersion = nv.getVersion(i)
 	return maxPruneVersion, prunedNum
 }
 
+func (nv *NodeVersions) getNextIdx(idx int) int {
+	if idx < nv.maxVersions-1 {
+		return idx + 1
+	} else {
+		return 0
+	}
+}
+
 func (nv *NodeVersions) getIndex(version int64) int {
-	if version < nv.nextVersion- int64(nv.maxVersions) {
+	if version < nv.nextVersion-int64(nv.maxVersions) {
 		return -1
 	}
-	idx := nv.nextVersionIdx - int(nv.nextVersion- version)
+	idx := nv.nextVersionIdx - int(nv.nextVersion-version)
 	if idx < 0 {
 		idx += nv.maxVersions
 	}
@@ -173,7 +187,7 @@ func (nv *NodeVersions) getIndex(version int64) int {
 
 func (nv *NodeVersions) getVersion(idx int) int64 {
 	if idx >= nv.nextVersionIdx {
-		return nv.nextVersion - int64(nv.maxVersions) + int64(idx - nv.nextVersionIdx)
+		return nv.nextVersion - int64(nv.maxVersions) + int64(idx-nv.nextVersionIdx)
 	}
-	return nv.nextVersion - int64(nv.nextVersionIdx - idx)
+	return nv.nextVersion - int64(nv.nextVersionIdx-idx)
 }
