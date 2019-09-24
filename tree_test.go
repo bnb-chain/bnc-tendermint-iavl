@@ -3,6 +3,7 @@ package iavl
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"os"
 	"runtime"
 	"strconv"
@@ -295,6 +296,7 @@ func TestVersionedTree(t *testing.T) {
 
 	nodes1 := tree.ndb.leafNodes()
 	require.Len(nodes1, 2, "db should have a size of 2")
+	require.Len(tree.ndb.orphans(), 0)
 
 	// version  1
 
@@ -307,6 +309,7 @@ func TestVersionedTree(t *testing.T) {
 	require.NoError(err)
 	require.False(bytes.Equal(hash1, hash2))
 	require.EqualValues(v+1, v2)
+	require.Len(tree.ndb.orphans(), 3)
 
 	// Recreate a new tree and load it, to make sure it works in this
 	// scenario.
@@ -330,8 +333,10 @@ func TestVersionedTree(t *testing.T) {
 	require.Len(nodes2, 5, "db should have grown in size")
 	require.Len(tree.ndb.orphans(), 3, "db should have three orphans")
 
+	PrintTreeByLevel(tree.ImmutableTree)
 	// Create two more orphans.
 	tree.Remove([]byte("key1"))
+	PrintTreeByLevel(tree.ImmutableTree)
 	tree.Set([]byte("key2"), []byte("val2"))
 
 	hash3, v3, _ := tree.SaveVersion()
@@ -350,7 +355,7 @@ func TestVersionedTree(t *testing.T) {
 
 	nodes3 := tree.ndb.leafNodes()
 	require.Len(nodes3, 6, "wrong number of nodes")
-	require.Len(tree.ndb.orphans(), 6, "wrong number of orphans")
+	require.Len(tree.ndb.orphans(), 7, "wrong number of orphans")
 
 	hash4, _, _ := tree.SaveVersion()
 	require.EqualValues(hash3, hash4)
@@ -1225,9 +1230,13 @@ func TestLoadVersionForOverwriting(t *testing.T) {
 	_, _, err = tree.SaveVersion()
 	require.NoError(err, "SaveVersion should not fail, write the same value")
 
+	fmt.Println(tree.memoryNodeSize())
+	fmt.Println(tree.nodeVersions.totalNodes)
 	//The tree version now is 52 which is equal to latest version.
 	//Now any key value can be written into the tree
+	PrintTreeByLevel(tree.ImmutableTree)
 	tree.Set([]byte("key any value"), []byte("value any value"))
+	fmt.Println(tree.memoryNodeSize())
 	_, _, err = tree.SaveVersion()
 	require.NoError(err, "SaveVersion should not fail.")
 }
