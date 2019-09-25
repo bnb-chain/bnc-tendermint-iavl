@@ -24,7 +24,7 @@ type MutableTree struct {
 	orphans        map[string]int64 // Nodes removed by changes to working tree.
 	versions       map[int64]bool   // The previous, saved versions of the tree.
 	ndb            *nodeDB
-	nodeVersions   *NodeVersions
+	//nodeVersions   *NodeVersions
 }
 
 // NewMutableTree returns a new tree with the specified cache size and datastore.
@@ -47,7 +47,7 @@ func NewMutableTreeWithOpts(db dbm.DB, cacheSize, maxVersions int, maxNodes int)
 		orphans:       map[string]int64{},
 		versions:      map[int64]bool{},
 		ndb:           ndb,
-		nodeVersions:  nodeVersions,
+		//nodeVersions:  nodeVersions,
 	}
 }
 
@@ -335,7 +335,7 @@ func (tree *MutableTree) GetImmutable(version int64) (*ImmutableTree, error) {
 		return &ImmutableTree{
 			ndb:          tree.ndb,
 			version:      version,
-			nodeVersions: tree.nodeVersions,
+			nodeVersions: NewNodeVersions(tree.nodeVersions.maxVersions, tree.nodeVersions.maxNodes, version),
 			isEmpty:      true,
 		}, nil
 	}
@@ -343,7 +343,7 @@ func (tree *MutableTree) GetImmutable(version int64) (*ImmutableTree, error) {
 		root:         tree.ndb.GetNode(rootHash),
 		ndb:          tree.ndb,
 		version:      version,
-		nodeVersions: tree.nodeVersions,
+		nodeVersions: NewNodeVersions(tree.nodeVersions.maxVersions, tree.nodeVersions.maxNodes, version),
 		isEmpty:      false,
 	}, nil
 }
@@ -396,6 +396,7 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 			version, newHash, existingHash)
 	}
 
+	fmt.Println("before save | version:", version, ", mem nodes: ", tree.memoryNodeSize(), ", record nodes:", tree.nodeVersions.totalNodes, ", changes", tree.nodeVersions.changes)
 	if tree.isEmpty {
 		// There can still be orphans, for example if the root is the node being
 		// removed.
@@ -418,6 +419,7 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 	tree.lastSaved = tree.ImmutableTree.clone()
 	tree.orphans = map[string]int64{}
 	maxPruneVersion, pruneNum, err := tree.nodeVersions.Commit(version)
+
 	if err != nil {
 		return nil, version, err
 	}
@@ -426,12 +428,11 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 		tree.PruneInMemory(maxPruneVersion)
 		fmt.Println("version", version, "cost", time.Now().Sub(startPruneTime).Nanoseconds(), "ns")
 	}
-	mNodes := tree.memoryNodeSize()
-	recordNodes := tree.nodeVersions.totalNodes
-	if mNodes != recordNodes {
-		panic(fmt.Errorf("BUG!!! mNode=%d, recordNodes=%d", mNodes, recordNodes))
-	}
-	fmt.Println()
+	//mNodes := tree.memoryNodeSize()
+	//recordNodes := tree.nodeVersions.totalNodes
+	//if mNodes != recordNodes {
+	//	panic(fmt.Errorf("BUG!!! mNode=%d, recordNodes=%d", mNodes, recordNodes))
+	//}
 	return tree.Hash(), version, nil
 }
 
