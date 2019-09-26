@@ -9,7 +9,7 @@ import (
 
 // PrintTree prints the whole tree in an indented form.
 func PrintTree(tree *ImmutableTree) {
-	ndb, root := tree.ndb, tree.GetRoot()
+	ndb, root := tree.ndb, tree.getRoot()
 	printNode(ndb, root, 0)
 }
 
@@ -114,7 +114,7 @@ func PrintTreeByLevel(tree *ImmutableTree) {
 	i := 0
 	levelLastIdx := 0
 	for {
-		fmt.Print(string(nodes[i].key) + ":" + strconv.Itoa(int(nodes[i].version)) + "\t")
+		fmt.Print(string(nodes[i].key) + ":" + strconv.Itoa(int(nodes[i].version)) + ":" + strconv.Itoa(int(nodes[i].loadVersion)) + "\t")
 		if left := nodes[i].leftNode; left != nil {
 			nodes = append(nodes, left)
 		}
@@ -129,5 +129,6 @@ func PrintTreeByLevel(tree *ImmutableTree) {
 		}
 		i++
 	}
+	fmt.Println()
 	fmt.Println()
 }

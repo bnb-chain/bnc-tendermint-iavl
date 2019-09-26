@@ -44,7 +44,7 @@ var defaultGraphNodeAttrs = map[string]string{
 func WriteDOTGraph(w io.Writer, tree *ImmutableTree, paths []PathToLeaf) {
 	ctx := &graphContext{}
 
-	root := tree.GetRoot()
+	root := tree.getRoot()
 	if root == nil {
 		return
 	}

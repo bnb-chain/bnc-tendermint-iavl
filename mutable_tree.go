@@ -3,15 +3,13 @@ package iavl
 import (
 	"bytes"
 	"fmt"
-	"time"
-
 	cmn "github.com/tendermint/tendermint/libs/common"
 	dbm "github.com/tendermint/tendermint/libs/db"
 )
 
 const (
-	defaultMaxVersions = 150
-	defaultMaxNodes    = 80000
+	defaultMaxVersions = 1000000
+	defaultMaxNodes    = 750000
 )
 
 // ErrVersionDoesNotExist is returned if a requested version does not exist.
@@ -19,12 +17,10 @@ var ErrVersionDoesNotExist = fmt.Errorf("version does not exist")
 
 // MutableTree is a persistent tree which keeps track of versions.
 type MutableTree struct {
-	*ImmutableTree                  // The current, working tree.
-	lastSaved      *ImmutableTree   // The most recently saved tree.
-	orphans        map[string]int64 // Nodes removed by changes to working tree.
-	versions       map[int64]bool   // The previous, saved versions of the tree.
-	ndb            *nodeDB
-	//nodeVersions   *NodeVersions
+	*ImmutableTree // The current, working tree.
+
+	orphans  map[string]int64 // Nodes removed by changes to working tree.
+	versions map[int64]bool   // The previous, saved versions of the tree.
 }
 
 // NewMutableTree returns a new tree with the specified cache size and datastore.
@@ -38,23 +34,19 @@ func NewMutableTreeWithOpts(db dbm.DB, cacheSize, maxVersions int, maxNodes int)
 	head := &ImmutableTree{
 		ndb:          ndb,
 		nodeVersions: nodeVersions,
-		isEmpty:      true,
 	}
 
 	return &MutableTree{
 		ImmutableTree: head,
-		lastSaved:     head.clone(),
 		orphans:       map[string]int64{},
 		versions:      map[int64]bool{},
-		ndb:           ndb,
-		//nodeVersions:  nodeVersions,
 	}
 }
 
 // IsEmpty returns whether or not the tree has any keys. Only trees that are
 // not empty can be saved.
 func (tree *MutableTree) IsEmpty() bool {
-	return tree.ImmutableTree.Size() == 0
+	return !tree.isNotEmpty
 }
 
 // VersionExists returns whether or not a version exists.
@@ -65,8 +57,8 @@ func (tree *MutableTree) VersionExists(version int64) bool {
 // Hash returns the hash of the latest saved version of the tree, as returned
 // by SaveVersion. If no versions have been saved, Hash returns nil.
 func (tree *MutableTree) Hash() []byte {
-	if tree.version > 0 {
-		return tree.lastSaved.Hash()
+	if tree.version > 0 && tree.lastSavedRoot != nil {
+		return tree.lastSavedRoot.hash
 	}
 	return nil
 }
@@ -98,10 +90,10 @@ func (tree *MutableTree) set(key []byte, value []byte) (orphans []*Node, updated
 	if value == nil {
 		panic(fmt.Sprintf("Attempt to store nil value at key '%s'", key))
 	}
-	if tree.ImmutableTree.GetRoot() == nil {
-		tree.ImmutableTree.root = NewNode(key, value, tree.version+1)
-		tree.isEmpty = false
-		tree.nodeVersions.Inc1(tree.root.version)
+	if tree.ImmutableTree.getRoot() == nil {
+		tree.ImmutableTree.root = NewNodeWithLoadVersion(key, value, tree.version+1, tree.version)
+		tree.nodeVersions.Inc1(tree.root.loadVersion)
+		tree.isNotEmpty = true
 		return nil, false
 	}
 	orphans = tree.prepareOrphansSlice()
@@ -117,40 +109,42 @@ func (tree *MutableTree) recursiveSet(node *Node, key []byte, value []byte, orph
 	if node.isLeaf() {
 		switch bytes.Compare(key, node.key) {
 		case -1:
-			tree.nodeVersions.Inc(version, 2)
+			tree.nodeVersions.Inc(tree.version, 2)
 			return &Node{
-				key:       node.key,
-				height:    1,
-				size:      2,
-				leftNode:  NewNode(key, value, version),
-				rightNode: node,
-				version:   version,
+				key:         node.key,
+				height:      1,
+				size:        2,
+				leftNode:    NewNodeWithLoadVersion(key, value, version, tree.version),
+				rightNode:   node,
+				version:     version,
+				loadVersion: tree.version,
 			}, false
 		case 1:
-			tree.nodeVersions.Inc(version, 2)
+			tree.nodeVersions.Inc(tree.version, 2)
 			return &Node{
-				key:       key,
-				height:    1,
-				size:      2,
-				leftNode:  node,
-				rightNode: NewNode(key, value, version),
-				version:   version,
+				key:         key,
+				height:      1,
+				size:        2,
+				leftNode:    node,
+				rightNode:   NewNodeWithLoadVersion(key, value, version, tree.version),
+				version:     version,
+				loadVersion: tree.version,
 			}, false
 		default:
 			*orphans = append(*orphans, node)
-			tree.nodeVersions.Update(node.version, version)
-			return NewNode(key, value, version), true
+			tree.nodeVersions.Update(node.loadVersion, tree.version)
+			return NewNodeWithLoadVersion(key, value, version, tree.version), true
 		}
 	} else {
 		*orphans = append(*orphans, node)
-		tree.nodeVersions.Update(node.version, version)
+		tree.nodeVersions.Update(node.loadVersion, tree.version)
 		node = node.clone(version)
 
 		if bytes.Compare(key, node.key) < 0 {
-			node.leftNode, updated = tree.recursiveSet(node.getLeftNode(tree.ImmutableTree), key, value, orphans)
+			node.leftNode, updated = tree.recursiveSet(node.getLeftNode(tree.ImmutableTree, true), key, value, orphans)
 			node.leftHash = nil // leftHash is yet unknown
 		} else {
-			node.rightNode, updated = tree.recursiveSet(node.getRightNode(tree.ImmutableTree), key, value, orphans)
+			node.rightNode, updated = tree.recursiveSet(node.getRightNode(tree.ImmutableTree, true), key, value, orphans)
 			node.rightHash = nil // rightHash is yet unknown
 		}
 
@@ -173,10 +167,11 @@ func (tree *MutableTree) Remove(key []byte) ([]byte, bool) {
 // remove tries to remove a key from the tree and if removed, returns its
 // value, nodes orphaned and 'true'.
 func (tree *MutableTree) remove(key []byte) (value []byte, orphaned []*Node, removed bool) {
-	if tree.GetRoot() == nil {
+	if tree.getRoot() == nil {
 		return nil, nil, false
 	}
 	orphaned = tree.prepareOrphansSlice()
+	tree.root.updateLoadVersion(tree.ImmutableTree)
 	newRootHash, newRoot, _, value := tree.recursiveRemove(tree.root, key, &orphaned)
 	if len(orphaned) == 0 {
 		return nil, nil, false
@@ -185,10 +180,11 @@ func (tree *MutableTree) remove(key []byte) (value []byte, orphaned []*Node, rem
 	if newRoot == nil {
 		if newRootHash != nil {
 			tree.root = tree.ndb.GetNode(newRootHash)
-			tree.nodeVersions.Inc1(tree.root.version)
+			tree.root.loadVersion = tree.version
+			tree.nodeVersions.Inc1(tree.root.loadVersion)
 		} else {
 			tree.root = nil
-			tree.isEmpty = true
+			tree.isNotEmpty = false
 		}
 	} else {
 		tree.root = newRoot
@@ -209,7 +205,7 @@ func (tree *MutableTree) recursiveRemove(node *Node, key []byte, orphans *[]*Nod
 	if node.isLeaf() {
 		if bytes.Equal(key, node.key) {
 			*orphans = append(*orphans, node)
-			tree.nodeVersions.Dec1(node.version)
+			tree.nodeVersions.Dec1(node.loadVersion)
 			return nil, nil, nil, node.value
 		}
 		return node.hash, node, nil, nil
@@ -217,19 +213,16 @@ func (tree *MutableTree) recursiveRemove(node *Node, key []byte, orphans *[]*Nod
 
 	// node.key < key; we go to the left to find the key:
 	if bytes.Compare(key, node.key) < 0 {
-		newLeftHash, newLeftNode, newKey, value := tree.recursiveRemove(node.getLeftNode(tree.ImmutableTree), key, orphans)
-
+		newLeftHash, newLeftNode, newKey, value := tree.recursiveRemove(node.getLeftNode(tree.ImmutableTree, true), key, orphans)
 		if len(*orphans) == 0 {
 			return node.hash, node, nil, value
 		}
-
+		*orphans = append(*orphans, node)
 		if newLeftHash == nil && newLeftNode == nil { // left node held value, was removed
-			*orphans = append(*orphans, node)
-			tree.nodeVersions.Dec1(node.version)
+			tree.nodeVersions.Dec1(node.loadVersion)
 			return node.rightHash, node.rightNode, node.key, value
 		}
-		*orphans = append(*orphans, node)
-		tree.nodeVersions.Update(node.version, version)
+		tree.nodeVersions.Update(node.loadVersion, tree.version)
 		newNode := node.clone(version)
 		newNode.leftHash, newNode.leftNode = newLeftHash, newLeftNode
 		newNode.calcHeightAndSize(tree.ImmutableTree)
@@ -238,17 +231,17 @@ func (tree *MutableTree) recursiveRemove(node *Node, key []byte, orphans *[]*Nod
 		return newNode.hash, newNode, newKey, value
 	}
 	// node.key >= key; either found or look to the right:
-	newRightHash, newRightNode, newKey, value := tree.recursiveRemove(node.getRightNode(tree.ImmutableTree), key, orphans)
+	newRightHash, newRightNode, newKey, value := tree.recursiveRemove(node.getRightNode(tree.ImmutableTree, true), key, orphans)
 
 	if len(*orphans) == 0 {
 		return node.hash, node, nil, value
-	} else if newRightHash == nil && newRightNode == nil { // right node held value, was removed
-		*orphans = append(*orphans, node)
-		tree.nodeVersions.Dec1(node.version)
-		return node.leftHash, node.leftNode, nil, value
 	}
 	*orphans = append(*orphans, node)
-	tree.nodeVersions.Update(node.version, version)
+	if newRightHash == nil && newRightNode == nil { // right node held value, was removed
+		tree.nodeVersions.Dec1(node.loadVersion)
+		return node.leftHash, node.leftNode, nil, value
+	}
+	tree.nodeVersions.Update(node.loadVersion, tree.version)
 	newNode := node.clone(version)
 	newNode.rightHash, newNode.rightNode = newRightHash, newRightNode
 	if newKey != nil {
@@ -303,15 +296,14 @@ func (tree *MutableTree) LoadVersion(targetVersion int64) (int64, error) {
 	}
 	if len(latestRoot) != 0 {
 		t.root = tree.ndb.GetNode(latestRoot)
-		t.nodeVersions.Inc1(t.root.version)
-	} else {
-		t.isEmpty = true
+		t.root.loadVersion = latestVersion
+		t.lastSavedRoot = t.root
+		t.nodeVersions.Inc1(t.root.loadVersion)
+		t.isNotEmpty = true
 	}
 
 	tree.orphans = map[string]int64{}
 	tree.ImmutableTree = t
-	tree.lastSaved = t.clone()
-	tree.nodeVersions = nodeVersions
 	return latestVersion, nil
 }
 
@@ -336,15 +328,19 @@ func (tree *MutableTree) GetImmutable(version int64) (*ImmutableTree, error) {
 			ndb:          tree.ndb,
 			version:      version,
 			nodeVersions: NewNodeVersions(tree.nodeVersions.maxVersions, tree.nodeVersions.maxNodes, version),
-			isEmpty:      true,
 		}, nil
 	}
+	nv := NewNodeVersions(tree.nodeVersions.maxVersions, tree.nodeVersions.maxNodes, version)
+	root := tree.ndb.GetNode(rootHash)
+	root.loadVersion = version
+	nv.Inc1(root.loadVersion)
 	return &ImmutableTree{
-		root:         tree.ndb.GetNode(rootHash),
+		root:         root,
+		lastSavedRoot:root,
 		ndb:          tree.ndb,
 		version:      version,
-		nodeVersions: NewNodeVersions(tree.nodeVersions.maxVersions, tree.nodeVersions.maxNodes, version),
-		isEmpty:      false,
+		nodeVersions: nv,
+		isNotEmpty:   true,
 	}, nil
 }
 
@@ -352,11 +348,11 @@ func (tree *MutableTree) GetImmutable(version int64) (*ImmutableTree, error) {
 // any unsaved modifications.
 func (tree *MutableTree) Rollback() {
 	if tree.version > 0 {
-		tree.ImmutableTree = tree.lastSaved.clone()
-		tree.nodeVersions.Rollback()
+		tree.ImmutableTree.root = tree.lastSavedRoot
 	} else {
-		tree.ImmutableTree = &ImmutableTree{ndb: tree.ndb, version: 0, isEmpty: true}
+		tree.ImmutableTree = &ImmutableTree{ndb: tree.ndb, version: 0, nodeVersions: tree.nodeVersions}
 	}
+	tree.nodeVersions.Rollback()
 	tree.orphans = map[string]int64{}
 }
 
@@ -386,8 +382,8 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 		var newHash = tree.WorkingHash()
 		if bytes.Equal(existingHash, newHash) {
 			tree.version = version
+			tree.lastSavedRoot = tree.root
 			tree.ImmutableTree = tree.ImmutableTree.clone()
-			tree.lastSaved = tree.ImmutableTree.clone()
 			tree.orphans = map[string]int64{}
 			tree.nodeVersions.Reset(tree.ImmutableTree)
 			return existingHash, version, nil
@@ -396,8 +392,7 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 			version, newHash, existingHash)
 	}
 
-	fmt.Println("before save | version:", version, ", mem nodes: ", tree.memoryNodeSize(), ", record nodes:", tree.nodeVersions.totalNodes, ", changes", tree.nodeVersions.changes)
-	if tree.isEmpty {
+	if tree.IsEmpty() {
 		// There can still be orphans, for example if the root is the node being
 		// removed.
 		debug("SAVE EMPTY TREE %v\n", version)
@@ -406,33 +401,26 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 	} else {
 		debug("SAVE TREE %v\n", version)
 		// Save the current tree.
-		tree.ndb.SaveBranch(tree.GetRoot())
+		tree.ndb.SaveBranch(tree.getRoot())
 		tree.ndb.SaveOrphans(version, tree.orphans)
-		tree.ndb.SaveRoot(tree.GetRoot(), version, false)
+		tree.ndb.SaveRoot(tree.getRoot(), version, false)
 	}
 	tree.ndb.Commit()
-	tree.version = version
-	tree.versions[version] = true
-
-	// Set new working tree.
-	tree.ImmutableTree = tree.ImmutableTree.clone()
-	tree.lastSaved = tree.ImmutableTree.clone()
-	tree.orphans = map[string]int64{}
-	maxPruneVersion, pruneNum, err := tree.nodeVersions.Commit(version)
-
+	// set lastSaveRoot before pruning, we ensure lastSavedRoot is not nil if the tree is not empty
+	tree.updateLastSaveRoot()
+	maxPruneVersion, pruneNum, err := tree.nodeVersions.Commit(tree.version)
 	if err != nil {
 		return nil, version, err
 	}
 	if pruneNum > 0 {
-		startPruneTime := time.Now()
 		tree.PruneInMemory(maxPruneVersion)
-		fmt.Println("version", version, "cost", time.Now().Sub(startPruneTime).Nanoseconds(), "ns")
 	}
-	//mNodes := tree.memoryNodeSize()
-	//recordNodes := tree.nodeVersions.totalNodes
-	//if mNodes != recordNodes {
-	//	panic(fmt.Errorf("BUG!!! mNode=%d, recordNodes=%d", mNodes, recordNodes))
-	//}
+
+	// Set new working tree.
+	tree.version = version
+	tree.versions[version] = true
+	tree.ImmutableTree = tree.ImmutableTree.clone()
+	tree.orphans = map[string]int64{}
 	return tree.Hash(), version, nil
 }
 
@@ -441,7 +429,7 @@ func (tree *MutableTree) PruneInMemory(maxPruneVersion int64) {
 		return
 	}
 	// root node can also be pruned from memory.
-	if tree.root.version <= maxPruneVersion {
+	if tree.root.loadVersion <= maxPruneVersion {
 		tree.root = nil
 	}
 
@@ -452,14 +440,14 @@ func (tree *MutableTree) PruneInMemory(maxPruneVersion int64) {
 		}
 		// root's version is the biggest in its branch.
 		if left := root.leftNode; left != nil {
-			if left.version <= maxPruneVersion {
+			if left.loadVersion <= maxPruneVersion {
 				root.leftNode = nil
 			} else {
 				iter(left)
 			}
 		}
 		if right := root.rightNode; right != nil {
-			if right.version <= maxPruneVersion {
+			if right.loadVersion <= maxPruneVersion {
 				root.rightNode = nil
 			} else {
 				iter(right)
@@ -518,16 +506,18 @@ func (tree *MutableTree) rotateRight(node *Node, orphans *[]*Node) *Node {
 	version := tree.version + 1
 
 	// TODO: optimize balance & rotate.
+	*orphans = append(*orphans, node)
+	tree.nodeVersions.Update(node.loadVersion, tree.version)
 	node = node.clone(version)
-	orphaned := node.getLeftNode(tree.ImmutableTree)
+
+	orphaned := node.getLeftNode(tree.ImmutableTree, false)
 	*orphans = append(*orphans, orphaned)
-	tree.nodeVersions.Update(orphaned.version, version)
+	tree.nodeVersions.Update(orphaned.loadVersion, tree.version)
 	newNode := orphaned.clone(version)
 
 	newNoderHash, newNoderCached := newNode.rightHash, newNode.rightNode
 	newNode.rightHash, newNode.rightNode = node.hash, node
 	node.leftHash, node.leftNode = newNoderHash, newNoderCached
-
 	node.calcHeightAndSize(tree.ImmutableTree)
 	newNode.calcHeightAndSize(tree.ImmutableTree)
 
@@ -539,10 +529,13 @@ func (tree *MutableTree) rotateLeft(node *Node, orphans *[]*Node) *Node {
 	version := tree.version + 1
 
 	// TODO: optimize balance & rotate.
+	*orphans = append(*orphans, node)
+	tree.nodeVersions.Update(node.loadVersion, tree.version)
 	node = node.clone(version)
-	orphaned := node.getRightNode(tree.ImmutableTree)
+
+	orphaned := node.getRightNode(tree.ImmutableTree, false)
 	*orphans = append(*orphans, orphaned)
-	tree.nodeVersions.Update(orphaned.version, version)
+	tree.nodeVersions.Update(orphaned.loadVersion, tree.version)
 	newNode := orphaned.clone(version)
 
 	newNodelHash, newNodelCached := newNode.leftHash, newNode.leftNode
@@ -564,30 +557,26 @@ func (tree *MutableTree) balance(node *Node, orphans *[]*Node) (newSelf *Node) {
 	balance := node.calcBalance(tree.ImmutableTree)
 
 	if balance > 1 {
-		if node.getLeftNode(tree.ImmutableTree).calcBalance(tree.ImmutableTree) >= 0 {
+		left := node.getLeftNode(tree.ImmutableTree, true)
+		if left.calcBalance(tree.ImmutableTree) >= 0 {
 			// Left Left Case
 			newNode := tree.rotateRight(node, orphans)
 			return newNode
 		}
 		// Left Right Case
-		left := node.getLeftNode(tree.ImmutableTree)
-		*orphans = append(*orphans, left)
-		// tree.nodeVersions.Dec1(left.version)
 		node.leftHash = nil
 		node.leftNode = tree.rotateLeft(left, orphans)
 		newNode := tree.rotateRight(node, orphans)
 		return newNode
 	}
 	if balance < -1 {
-		if node.getRightNode(tree.ImmutableTree).calcBalance(tree.ImmutableTree) <= 0 {
+		right := node.getRightNode(tree.ImmutableTree, true)
+		if right.calcBalance(tree.ImmutableTree) <= 0 {
 			// Right Right Case
 			newNode := tree.rotateLeft(node, orphans)
 			return newNode
 		}
 		// Right Left Case
-		right := node.getRightNode(tree.ImmutableTree)
-		*orphans = append(*orphans, right)
-		//tree.nodeVersions.Dec1(right.version)
 		node.rightHash = nil
 		node.rightNode = tree.rotateRight(right, orphans)
 		newNode := tree.rotateLeft(node, orphans)

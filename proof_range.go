@@ -317,7 +317,7 @@ func (t *ImmutableTree) getRangeProof(keyStart, keyEnd []byte, limit int) (proof
 	if limit < 0 {
 		panic("limit must be greater or equal to 0 -- 0 means no limit")
 	}
-	root := t.GetRoot()
+	root := t.getRoot()
 	if root == nil {
 		return nil, nil, nil, nil
 	}

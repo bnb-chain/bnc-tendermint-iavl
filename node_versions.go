@@ -2,7 +2,6 @@ package iavl
 
 import (
 	"fmt"
-	"time"
 )
 
 // not Thread-Safe
@@ -27,8 +26,8 @@ func NewNodeVersions(maxVersions int, maxNodes int, lastVersion int64) *NodeVers
 		maxVersions: maxVersions,
 		maxNodes:    maxNodes,
 
-		firstVersion:   lastVersion,
-		nextVersion:    lastVersion + 1,
+		firstVersion:   lastVersion - 1,
+		nextVersion:    lastVersion,
 		nextVersionIdx: 0,
 		totalNodes:     0,
 	}
@@ -51,8 +50,10 @@ func (nv *NodeVersions) Dec(version int64, times int) {
 }
 
 func (nv *NodeVersions) Update(fromVersion, toVersion int64) {
-	nv.changes[fromVersion]--
-	nv.changes[toVersion]++
+	if fromVersion != toVersion {
+		nv.changes[fromVersion]--
+		nv.changes[toVersion]++
+	}
 }
 
 func (nv *NodeVersions) Reset(tree *ImmutableTree) {
@@ -67,8 +68,8 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 		return
 	}
 
-	nv.firstVersion = tree.version
-	nv.nextVersion = tree.version + 1
+	nv.firstVersion = tree.version - 1
+	nv.nextVersion = tree.version
 
 	var iter func(root *Node)
 	iter = func(root *Node) {
@@ -77,7 +78,7 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 		}
 		// root's version is the biggest in its branch.
 		iter(root.leftNode)
-		nv.Inc1(root.version)
+		nv.Inc1(root.loadVersion)
 		iter(root.rightNode)
 	}
 	iter(tree.root)
@@ -97,7 +98,6 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 
 // we never prune nodes that have the same version with root node version.
 func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, pruneNum int, err error) {
-	startTime := time.Now()
 	if newVersion != nv.nextVersion {
 		return 0, 0, fmt.Errorf("expect version %d, got %d", nv.nextVersion, newVersion)
 	}
@@ -120,10 +120,8 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, pruneNu
 			olderVersionNums += num
 			continue
 		}
-
 		nv.nums[versionIdx] += num
 		nv.totalNodes += num
-
 		if version < nv.firstVersion {
 			// some old version may be loaded in this round.
 			nv.firstVersion = version
@@ -138,7 +136,6 @@ func (nv *NodeVersions) Commit(newVersion int64) (maxPruneVersion int64, pruneNu
 	nv.nextVersion++
 	nv.nextVersionIdx = nv.getNextIdx(nv.nextVersionIdx)
 	nv.firstVersion = maxPruneVersion + 1
-	fmt.Println(newVersion, "commit cost", time.Now().Sub(startTime).Nanoseconds(), "ns")
 	return maxPruneVersion, pruneNum, nil
 }
 
