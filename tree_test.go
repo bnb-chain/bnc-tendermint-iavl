@@ -3,7 +3,6 @@ package iavl
 import (
 	"bytes"
 	"flag"
-	"fmt"
 	"os"
 	"runtime"
 	"strconv"
@@ -77,7 +76,7 @@ func TestVersionedRandomTree(t *testing.T) {
 	tr, err := tree.GetImmutable(int64(versions))
 	tr.nodeSize() // deliberately link left/right nodes with parents
 	require.NoError(err, "GetImmutable should not error for version %d", versions)
-	require.Equal(tr.root, tree.root)
+	require.True(tr.root.equals(tree.root))
 
 	// After cleaning up all previous versions, we should have as many nodes
 	// in the db as in the current tree version.
@@ -333,10 +332,8 @@ func TestVersionedTree(t *testing.T) {
 	require.Len(nodes2, 5, "db should have grown in size")
 	require.Len(tree.ndb.orphans(), 3, "db should have three orphans")
 
-	PrintTreeByLevel(tree.ImmutableTree)
 	// Create two more orphans.
 	tree.Remove([]byte("key1"))
-	PrintTreeByLevel(tree.ImmutableTree)
 	tree.Set([]byte("key2"), []byte("val2"))
 
 	hash3, v3, _ := tree.SaveVersion()
@@ -1230,13 +1227,9 @@ func TestLoadVersionForOverwriting(t *testing.T) {
 	_, _, err = tree.SaveVersion()
 	require.NoError(err, "SaveVersion should not fail, write the same value")
 
-	fmt.Println(tree.memoryNodeSize())
-	fmt.Println(tree.nodeVersions.totalNodes)
 	//The tree version now is 52 which is equal to latest version.
 	//Now any key value can be written into the tree
-	PrintTreeByLevel(tree.ImmutableTree)
 	tree.Set([]byte("key any value"), []byte("value any value"))
-	fmt.Println(tree.memoryNodeSize())
 	_, _, err = tree.SaveVersion()
 	require.NoError(err, "SaveVersion should not fail.")
 }
