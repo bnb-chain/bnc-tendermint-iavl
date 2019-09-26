@@ -3,20 +3,20 @@ package iavl
 import (
 	"bytes"
 	"fmt"
-	"strings"
-
 	dbm "github.com/tendermint/tendermint/libs/db"
+	"strings"
 )
 
 // ImmutableTree is a container for an immutable AVL+ ImmutableTree. Changes are performed by
 // swapping the internal root with a new one, while the container is mutable.
 // Note that this tree is not thread-safe.
 type ImmutableTree struct {
-	root         *Node
-	ndb          *nodeDB
-	nodeVersions *NodeVersions
-	version      int64
-	isEmpty      bool
+	root               *Node
+	ndb                *nodeDB
+	nodeVersions       *NodeVersions
+	version            int64
+	isEmpty            bool
+	currentLoadVersion int64
 }
 
 // NewImmutableTree creates both in-memory and persistent instances
@@ -39,18 +39,20 @@ func (t *ImmutableTree) GetRoot() *Node {
 		if t.root != nil {
 			// correct isEmpty
 			t.isEmpty = false
+			t.nodeVersions.Update(t.root.loadVersion, t.version)
 			return t.root
 		}
 		return nil
 	}
 	if t.root == nil {
 		if rootHash := t.ndb.getRoot(t.version); len(rootHash) != 0 {
-			t.root = t.ndb.GetNode(rootHash)
-			t.nodeVersions.Inc1(t.root.version)
+			t.root = t.ndb.GetNode(rootHash, t.version)
+			t.nodeVersions.Inc1(t.root.loadVersion)
 		} else {
 			t.isEmpty = true
 		}
 	}
+	t.root.updateLoadVersion(t)
 	return t.root
 }
 

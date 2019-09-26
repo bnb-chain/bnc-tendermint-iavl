@@ -26,7 +26,7 @@ func printNode(ndb *nodeDB, node *Node, indent int) {
 	if node.rightNode != nil {
 		printNode(ndb, node.rightNode, indent+1)
 	} else if node.rightHash != nil {
-		rightNode := ndb.GetNode(node.rightHash)
+		rightNode := ndb.GetNode(node.rightHash, node.loadVersion)
 		printNode(ndb, rightNode, indent+1)
 	}
 
@@ -39,7 +39,7 @@ func printNode(ndb *nodeDB, node *Node, indent int) {
 	if node.leftNode != nil {
 		printNode(ndb, node.leftNode, indent+1)
 	} else if node.leftHash != nil {
-		leftNode := ndb.GetNode(node.leftHash)
+		leftNode := ndb.GetNode(node.leftHash, node.loadVersion)
 		printNode(ndb, leftNode, indent+1)
 	}
 
@@ -114,7 +114,7 @@ func PrintTreeByLevel(tree *ImmutableTree) {
 	i := 0
 	levelLastIdx := 0
 	for {
-		fmt.Print(string(nodes[i].key) + ":" + strconv.Itoa(int(nodes[i].version)) + "\t")
+		fmt.Print(string(nodes[i].key) + ":" + strconv.Itoa(int(nodes[i].version)) + ":" + strconv.Itoa(int(nodes[i].loadVersion)) + "\t")
 		if left := nodes[i].leftNode; left != nil {
 			nodes = append(nodes, left)
 		}
@@ -129,5 +129,6 @@ func PrintTreeByLevel(tree *ImmutableTree) {
 		}
 		i++
 	}
+	fmt.Println()
 	fmt.Println()
 }

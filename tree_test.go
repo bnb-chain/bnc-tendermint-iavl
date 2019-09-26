@@ -77,7 +77,7 @@ func TestVersionedRandomTree(t *testing.T) {
 	tr, err := tree.GetImmutable(int64(versions))
 	tr.nodeSize() // deliberately link left/right nodes with parents
 	require.NoError(err, "GetImmutable should not error for version %d", versions)
-	require.Equal(tr.root, tree.root)
+	require.True(tr.root.equals(tree.root))
 
 	// After cleaning up all previous versions, we should have as many nodes
 	// in the db as in the current tree version.

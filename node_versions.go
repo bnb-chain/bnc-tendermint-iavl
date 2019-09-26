@@ -27,8 +27,8 @@ func NewNodeVersions(maxVersions int, maxNodes int, lastVersion int64) *NodeVers
 		maxVersions: maxVersions,
 		maxNodes:    maxNodes,
 
-		firstVersion:   lastVersion,
-		nextVersion:    lastVersion + 1,
+		firstVersion:   lastVersion - 1,
+		nextVersion:    lastVersion,
 		nextVersionIdx: 0,
 		totalNodes:     0,
 	}
@@ -67,8 +67,8 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 		return
 	}
 
-	nv.firstVersion = tree.version
-	nv.nextVersion = tree.version + 1
+	nv.firstVersion = tree.version - 1
+	nv.nextVersion = tree.version
 
 	var iter func(root *Node)
 	iter = func(root *Node) {
@@ -77,7 +77,7 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 		}
 		// root's version is the biggest in its branch.
 		iter(root.leftNode)
-		nv.Inc1(root.version)
+		nv.Inc1(root.loadVersion)
 		iter(root.rightNode)
 	}
 	iter(tree.root)

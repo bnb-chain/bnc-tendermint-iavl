@@ -61,7 +61,7 @@ func NewNodeDB(db dbm.DB, cacheSize int) *nodeDB {
 
 // GetNode gets a node from cache or disk. If it is an inner node, it does not
 // load its children.
-func (ndb *nodeDB) GetNode(hash []byte) *Node {
+func (ndb *nodeDB) GetNode(hash []byte, currentTreeVersion int64) *Node {
 	ndb.mtx.Lock()
 	defer ndb.mtx.Unlock()
 
@@ -82,7 +82,7 @@ func (ndb *nodeDB) GetNode(hash []byte) *Node {
 		panic(fmt.Sprintf("Value missing for hash %x corresponding to nodeKey %s", hash, ndb.nodeKey(hash)))
 	}
 
-	node, err := MakeNode(buf)
+	node, err := MakeNodeWithLoadVersion(buf, currentTreeVersion)
 	if err != nil {
 		panic(fmt.Sprintf("Error reading Node. bytes: %x, error: %v", buf, err))
 	}

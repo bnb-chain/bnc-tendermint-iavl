@@ -6,11 +6,11 @@ package iavl
 import (
 	"bytes"
 	"fmt"
-	"io"
-
 	"github.com/tendermint/go-amino"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	cmn "github.com/tendermint/tendermint/libs/common"
+	"io"
+	"sync"
 )
 
 // Node represents a node in a Tree.
@@ -26,24 +26,32 @@ type Node struct {
 	rightHash []byte
 	rightNode *Node
 	persisted bool
+
+	loadVersion int64 // version when the node is loaded into memory.
+	mtx sync.Mutex
 }
 
 // NewNode returns a new node from a key, value and version.
 func NewNode(key []byte, value []byte, version int64) *Node {
 	return &Node{
-		key:     key,
-		value:   value,
-		height:  0,
-		size:    1,
-		version: version,
+		key:         key,
+		value:       value,
+		height:      0,
+		size:        1,
+		version:     version,
+		loadVersion: version - 1,
 	}
+}
+
+func MakeNode(buf []byte) (*Node, cmn.Error) {
+	return MakeNodeWithLoadVersion(buf, 0)
 }
 
 // MakeNode constructs an *Node from an encoded byte slice.
 //
 // The new node doesn't have its hash saved or set. The caller must set it
 // afterwards.
-func MakeNode(buf []byte) (*Node, cmn.Error) {
+func MakeNodeWithLoadVersion(buf []byte, loadVersion int64) (*Node, cmn.Error) {
 
 	// Read node header (height, size, version, key).
 	height, n, cause := amino.DecodeInt8(buf)
@@ -71,10 +79,11 @@ func MakeNode(buf []byte) (*Node, cmn.Error) {
 	buf = buf[n:]
 
 	node := &Node{
-		height:  height,
-		size:    size,
-		version: ver,
-		key:     key,
+		height:      height,
+		size:        size,
+		version:     ver,
+		key:         key,
+		loadVersion: loadVersion,
 	}
 
 	// Read node body.
@@ -122,16 +131,17 @@ func (node *Node) clone(version int64) *Node {
 		panic("Attempt to copy a leaf node")
 	}
 	return &Node{
-		key:       node.key,
-		height:    node.height,
-		version:   version,
-		size:      node.size,
-		hash:      nil,
-		leftHash:  node.leftHash,
-		leftNode:  node.leftNode,
-		rightHash: node.rightHash,
-		rightNode: node.rightNode,
-		persisted: false,
+		key:         node.key,
+		height:      node.height,
+		version:     version,
+		size:        node.size,
+		hash:        nil,
+		leftHash:    node.leftHash,
+		leftNode:    node.leftNode,
+		rightHash:   node.rightHash,
+		rightNode:   node.rightNode,
+		persisted:   false,
+		loadVersion: version - 1,
 	}
 }
 
@@ -152,9 +162,9 @@ func (node *Node) has(t *ImmutableTree, key []byte) (has bool) {
 		return false
 	}
 	if bytes.Compare(key, node.key) < 0 {
-		return node.getLeftNode(t).has(t, key)
+		return node.getLeftNode(t, false).has(t, key)
 	}
-	return node.getRightNode(t).has(t, key)
+	return node.getRightNode(t, false).has(t, key)
 }
 
 // Get a key under the node.
@@ -171,9 +181,9 @@ func (node *Node) get(t *ImmutableTree, key []byte) (index int64, value []byte) 
 	}
 
 	if bytes.Compare(key, node.key) < 0 {
-		return node.getLeftNode(t).get(t, key)
+		return node.getLeftNode(t, false).get(t, key)
 	}
-	rightNode := node.getRightNode(t)
+	rightNode := node.getRightNode(t, false)
 	index, value = rightNode.get(t, key)
 	index += node.size - rightNode.size
 	return index, value
@@ -188,12 +198,12 @@ func (node *Node) getByIndex(t *ImmutableTree, index int64) (key []byte, value [
 	}
 	// TODO: could improve this by storing the
 	// sizes as well as left/right hash.
-	leftNode := node.getLeftNode(t)
+	leftNode := node.getLeftNode(t, false)
 
 	if index < leftNode.size {
 		return leftNode.getByIndex(t, index)
 	}
-	return node.getRightNode(t).getByIndex(t, index-leftNode.size)
+	return node.getRightNode(t, false).getByIndex(t, index-leftNode.size)
 }
 
 // Computes the hash of the node without computing its descendants. Must be
@@ -360,34 +370,69 @@ func (node *Node) writeBytes(w io.Writer) cmn.Error {
 	return nil
 }
 
-func GetLeftNode(node *Node, t *ImmutableTree) *Node { return node.getLeftNode(t) }
-func (node *Node) getLeftNode(t *ImmutableTree) *Node {
-	if node.leftNode != nil {
-		return node.leftNode
+func GetLeftNode(node *Node, t *ImmutableTree) *Node { return node.getLeftNode(t, false) }
+func (node *Node) getLeftNode(t *ImmutableTree, updateVersion bool) *Node {
+	if node.leftNode == nil {
+		node.mtx.Lock()
+		defer node.mtx.Unlock()
+		if node.leftNode == nil {
+			node.leftNode = t.ndb.GetNode(node.leftHash, t.version)
+			t.nodeVersions.Inc1(node.leftNode.loadVersion)
+			return node.leftNode
+		}
 	}
-	node.leftNode = t.ndb.GetNode(node.leftHash)
-	t.nodeVersions.Inc1(node.leftNode.version)
+	if updateVersion {
+		node.leftNode.updateLoadVersion(t)
+	}
 	return node.leftNode
 }
 
-func GetRightNode(node *Node, t *ImmutableTree) *Node { return node.getRightNode(t) }
-func (node *Node) getRightNode(t *ImmutableTree) *Node {
-	if node.rightNode != nil {
-		return node.rightNode
+func GetRightNode(node *Node, t *ImmutableTree) *Node { return node.getRightNode(t, false) }
+func (node *Node) getRightNode(t *ImmutableTree, updateVersion bool) *Node {
+	if node.rightNode == nil {
+		node.mtx.Lock()
+		defer node.mtx.Unlock()
+		if node.rightNode == nil {
+			node.rightNode = t.ndb.GetNode(node.rightHash, t.version)
+			t.nodeVersions.Inc1(node.rightNode.loadVersion)
+			return node.rightNode
+		}
 	}
-	node.rightNode = t.ndb.GetNode(node.rightHash)
-	t.nodeVersions.Inc1(node.rightNode.version)
+	if updateVersion {
+		node.rightNode.updateLoadVersion(t)
+	}
 	return node.rightNode
 }
 
 // NOTE: mutates height and size
 func (node *Node) calcHeightAndSize(t *ImmutableTree) {
-	node.height = maxInt8(node.getLeftNode(t).height, node.getRightNode(t).height) + 1
-	node.size = node.getLeftNode(t).size + node.getRightNode(t).size
+	left, right := node.getLeftNode(t, true), node.getRightNode(t, true)
+	node.height = maxInt8(left.height, right.height) + 1
+	node.size = left.size + right.size
 }
 
 func (node *Node) calcBalance(t *ImmutableTree) int {
-	return int(node.getLeftNode(t).height) - int(node.getRightNode(t).height)
+	return int(node.getLeftNode(t, true).height) - int(node.getRightNode(t, true).height)
+}
+
+func (node *Node) equals(other *Node) bool {
+	if node == nil {
+		return other == nil
+	} else if other == nil {
+		return false
+	}
+	// do not check loadVersion.
+	return node.version == other.version &&
+		node.size == other.size &&
+		node.height == other.height &&
+		bytes.Equal(node.hash, other.hash) &&
+		bytes.Equal(node.key, other.key) &&
+		bytes.Equal(node.value, other.value) &&
+		bytes.Equal(node.leftHash, other.leftHash) &&
+		bytes.Equal(node.rightHash, other.rightHash) &&
+		node.persisted == other.persisted &&
+		node.leftNode.equals(other.leftNode) &&
+		node.rightNode.equals(other.rightNode)
 }
 
 // traverse is a wrapper over traverseInRange when we want the whole tree
@@ -431,28 +476,36 @@ func (node *Node) traverseInRange(t *ImmutableTree, start, end []byte, ascending
 	if ascending {
 		// check lower nodes, then higher
 		if afterStart {
-			stop = node.getLeftNode(t).traverseInRange(t, start, end, ascending, inclusive, depth+1, cb)
+			stop = node.getLeftNode(t, false).traverseInRange(t, start, end, ascending, inclusive, depth+1, cb)
 		}
 		if stop {
 			return stop
 		}
 		if beforeEnd {
-			stop = node.getRightNode(t).traverseInRange(t, start, end, ascending, inclusive, depth+1, cb)
+			stop = node.getRightNode(t, false).traverseInRange(t, start, end, ascending, inclusive, depth+1, cb)
 		}
 	} else {
 		// check the higher nodes first
 		if beforeEnd {
-			stop = node.getRightNode(t).traverseInRange(t, start, end, ascending, inclusive, depth+1, cb)
+			stop = node.getRightNode(t, false).traverseInRange(t, start, end, ascending, inclusive, depth+1, cb)
 		}
 		if stop {
 			return stop
 		}
 		if afterStart {
-			stop = node.getLeftNode(t).traverseInRange(t, start, end, ascending, inclusive, depth+1, cb)
+			stop = node.getLeftNode(t, false).traverseInRange(t, start, end, ascending, inclusive, depth+1, cb)
 		}
 	}
 
 	return stop
+}
+
+// NOTE: not thread-safe
+func (node *Node) updateLoadVersion(t *ImmutableTree) {
+	if t != nil && node.loadVersion != t.version {
+		t.nodeVersions.Update(node.loadVersion, t.version)
+		node.loadVersion = t.version
+	}
 }
 
 // Only used in testing...
@@ -460,5 +513,5 @@ func (node *Node) lmd(t *ImmutableTree) *Node {
 	if node.isLeaf() {
 		return node
 	}
-	return node.getLeftNode(t).lmd(t)
+	return node.getLeftNode(t, false).lmd(t)
 }
