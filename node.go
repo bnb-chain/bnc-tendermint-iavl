@@ -392,7 +392,7 @@ func (node *Node) getLeftNode(t *ImmutableTree, updateVersion bool) *Node {
 				// so just use the minimal loadVersion(i.e. node.version-1)
 				node.leftNode.loadVersion = node.leftNode.version - 1
 			}
-			t.nodeVersions.Inc1(node.leftNode.loadVersion)
+			t.nodeVersions.Inc1WithLock(node.leftNode.loadVersion)
 			return node.leftNode
 		}
 	}
@@ -416,7 +416,7 @@ func (node *Node) getRightNode(t *ImmutableTree, updateVersion bool) *Node {
 			} else {
 				node.rightNode.loadVersion = node.rightNode.version - 1
 			}
-			t.nodeVersions.Inc1(node.rightNode.loadVersion)
+			t.nodeVersions.Inc1WithLock(node.rightNode.loadVersion)
 			return node.rightNode
 		}
 	}

@@ -2,11 +2,13 @@ package iavl
 
 import (
 	"fmt"
+	"sync"
 )
 
 // not Thread-Safe
 type NodeVersions struct {
 	nums    []int
+	mtx     sync.Mutex
 	changes map[int64]int // version -> num, changes will be merged to nums when commit
 
 	maxVersions int
@@ -35,6 +37,12 @@ func NewNodeVersions(maxVersions int, maxNodes int, lastVersion int64) *NodeVers
 
 func (nv *NodeVersions) Inc1(version int64) {
 	nv.changes[version]++
+}
+
+func (nv *NodeVersions) Inc1WithLock(version int64) {
+	nv.mtx.Lock()
+	nv.changes[version]++
+	nv.mtx.Unlock()
 }
 
 func (nv *NodeVersions) Inc(version int64, times int) {
