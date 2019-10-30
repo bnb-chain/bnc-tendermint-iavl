@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
+	"strconv"
 )
 
 // PrintTree prints the whole tree in an indented form.
 func PrintTree(tree *ImmutableTree) {
-	ndb, root := tree.ndb, tree.root
+	ndb, root := tree.ndb, tree.getRoot()
 	printNode(ndb, root, 0)
 }
 
@@ -101,4 +102,33 @@ func sortByteSlices(src [][]byte) [][]byte {
 	bzz := byteslices(src)
 	sort.Sort(bzz)
 	return bzz
+}
+
+func PrintTreeByLevel(tree *ImmutableTree) {
+	if tree == nil || tree.root == nil {
+		fmt.Println("<Empty Tree>")
+		return
+	}
+	nodes := make([]*Node, 0, tree.memoryNodeSize())
+	nodes = append(nodes, tree.root)
+	i := 0
+	levelLastIdx := 0
+	for {
+		fmt.Print(string(nodes[i].key) + ":" + strconv.Itoa(int(nodes[i].version)) + ":" + strconv.Itoa(int(nodes[i].loadVersion)) + "\t")
+		if left := nodes[i].leftNode; left != nil {
+			nodes = append(nodes, left)
+		}
+		if right := nodes[i].rightNode; right != nil {
+			nodes = append(nodes, right)
+		}
+		if i == len(nodes)-1 {
+			break
+		} else if i == levelLastIdx {
+			fmt.Println()
+			levelLastIdx = len(nodes) - 1
+		}
+		i++
+	}
+	fmt.Println()
+	fmt.Println()
 }

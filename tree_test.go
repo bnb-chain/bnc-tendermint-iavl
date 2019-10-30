@@ -76,7 +76,7 @@ func TestVersionedRandomTree(t *testing.T) {
 	tr, err := tree.GetImmutable(int64(versions))
 	tr.nodeSize() // deliberately link left/right nodes with parents
 	require.NoError(err, "GetImmutable should not error for version %d", versions)
-	require.Equal(tr.root, tree.root)
+	require.True(tr.root.equals(tree.root))
 
 	// After cleaning up all previous versions, we should have as many nodes
 	// in the db as in the current tree version.
@@ -295,6 +295,7 @@ func TestVersionedTree(t *testing.T) {
 
 	nodes1 := tree.ndb.leafNodes()
 	require.Len(nodes1, 2, "db should have a size of 2")
+	require.Len(tree.ndb.orphans(), 0)
 
 	// version  1
 
@@ -307,6 +308,7 @@ func TestVersionedTree(t *testing.T) {
 	require.NoError(err)
 	require.False(bytes.Equal(hash1, hash2))
 	require.EqualValues(v+1, v2)
+	require.Len(tree.ndb.orphans(), 3)
 
 	// Recreate a new tree and load it, to make sure it works in this
 	// scenario.
@@ -350,7 +352,7 @@ func TestVersionedTree(t *testing.T) {
 
 	nodes3 := tree.ndb.leafNodes()
 	require.Len(nodes3, 6, "wrong number of nodes")
-	require.Len(tree.ndb.orphans(), 6, "wrong number of orphans")
+	require.Len(tree.ndb.orphans(), 7, "wrong number of orphans")
 
 	hash4, _, _ := tree.SaveVersion()
 	require.EqualValues(hash3, hash4)

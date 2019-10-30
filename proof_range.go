@@ -317,13 +317,14 @@ func (t *ImmutableTree) getRangeProof(keyStart, keyEnd []byte, limit int) (proof
 	if limit < 0 {
 		panic("limit must be greater or equal to 0 -- 0 means no limit")
 	}
-	if t.root == nil {
+	root := t.getRoot()
+	if root == nil {
 		return nil, nil, nil, nil
 	}
-	t.root.hashWithCount() // Ensure that all hashes are calculated.
+	root.hashWithCount() // Ensure that all hashes are calculated.
 
 	// Get the first key/value pair proof, which provides us with the left key.
-	path, left, err := t.root.PathToLeaf(t, keyStart)
+	path, left, err := root.PathToLeaf(t, keyStart)
 	if err != nil {
 		// Key doesn't exist, but instead we got the prev leaf (or the
 		// first or last leaf), which provides proof of absence).
@@ -369,7 +370,7 @@ func (t *ImmutableTree) getRangeProof(keyStart, keyEnd []byte, limit int) (proof
 	var pathCount = 0
 	// var keys, values [][]byte defined as function outs.
 
-	t.root.traverseInRange(t, afterLeft, nil, true, false, 0,
+	root.traverseInRange(t, afterLeft, nil, true, false, 0,
 		func(node *Node, depth uint8) (stop bool) {
 
 			// Track when we diverge from path, or when we've exhausted path,
