@@ -2,7 +2,6 @@ package iavl
 
 import (
 	"bytes"
-	"container/list"
 	"fmt"
 	"sort"
 	"sync"
@@ -42,9 +41,6 @@ type nodeDB struct {
 	batch dbm.Batch  // Batched writing buffer.
 
 	latestVersion  int64
-	nodeCache      map[string]*list.Element // Node cache.
-	nodeCacheSize  int                      // Node cache size limit in elements.
-	nodeCacheQueue *list.List               // LRU queue of cache elements. Used for deletion.
 }
 
 func NewNodeDB(db dbm.DB, cacheSize int) *nodeDB {
@@ -52,9 +48,6 @@ func NewNodeDB(db dbm.DB, cacheSize int) *nodeDB {
 		db:             db,
 		batch:          db.NewBatch(),
 		latestVersion:  0, // initially invalid
-		nodeCache:      make(map[string]*list.Element),
-		nodeCacheSize:  cacheSize,
-		nodeCacheQueue: list.New(),
 	}
 	return ndb
 }
@@ -67,13 +60,6 @@ func (ndb *nodeDB) GetNode(hash []byte) *Node {
 
 	if len(hash) == 0 {
 		panic("nodeDB.GetNode() requires hash")
-	}
-
-	// Check the cache.
-	if elem, ok := ndb.nodeCache[string(hash)]; ok {
-		// Already exists. Move to back of nodeCacheQueue.
-		ndb.nodeCacheQueue.MoveToBack(elem)
-		return elem.Value.(*Node)
 	}
 
 	// Doesn't exist, load.
@@ -89,8 +75,6 @@ func (ndb *nodeDB) GetNode(hash []byte) *Node {
 
 	node.hash = hash
 	node.persisted = true
-	ndb.cacheNode(node)
-
 	return node
 }
 
@@ -107,15 +91,15 @@ func (ndb *nodeDB) SaveNode(node *Node) {
 	}
 
 	// Save node bytes to db.
-	buf := new(bytes.Buffer)
-	if err := node.writeBytes(buf); err != nil {
+	var buf bytes.Buffer
+	buf.Grow(node.aminoSize())
+	if err := node.writeBytes(&buf); err != nil {
 		panic(err)
 	}
 	ndb.batch.Set(ndb.nodeKey(node.hash), buf.Bytes())
 	debug("BATCH SAVE %X %p\n", node.hash, node)
 
 	node.persisted = true
-	ndb.cacheNode(node)
 }
 
 // Has checks if a hash exists in the database.
@@ -150,10 +134,6 @@ func (ndb *nodeDB) SaveBranch(node *Node) []byte {
 
 	node._hash()
 	ndb.SaveNode(node)
-
-	node.leftNode = nil
-	node.rightNode = nil
-
 	return node.hash
 }
 
@@ -215,7 +195,6 @@ func (ndb *nodeDB) deleteOrphans(version int64) {
 		if predecessor < fromVersion || fromVersion == toVersion {
 			debug("DELETE predecessor:%v fromVersion:%v toVersion:%v %X\n", predecessor, fromVersion, toVersion, hash)
 			ndb.batch.Delete(ndb.nodeKey(hash))
-			ndb.uncacheNode(hash)
 		} else {
 			debug("MOVE predecessor:%v fromVersion:%v toVersion:%v %X\n", predecessor, fromVersion, toVersion, hash)
 			ndb.saveOrphan(hash, fromVersion, predecessor)
@@ -305,26 +284,6 @@ func (ndb *nodeDB) traversePrefix(prefix []byte, fn func(k, v []byte)) {
 
 	for ; itr.Valid(); itr.Next() {
 		fn(itr.Key(), itr.Value())
-	}
-}
-
-func (ndb *nodeDB) uncacheNode(hash []byte) {
-	if elem, ok := ndb.nodeCache[string(hash)]; ok {
-		ndb.nodeCacheQueue.Remove(elem)
-		delete(ndb.nodeCache, string(hash))
-	}
-}
-
-// Add a node to the cache and pop the least recently used node if we've
-// reached the cache size limit.
-func (ndb *nodeDB) cacheNode(node *Node) {
-	elem := ndb.nodeCacheQueue.PushBack(node)
-	ndb.nodeCache[string(node.hash)] = elem
-
-	if ndb.nodeCacheQueue.Len() > ndb.nodeCacheSize {
-		oldest := ndb.nodeCacheQueue.Front()
-		hash := ndb.nodeCacheQueue.Remove(oldest).(*Node).hash
-		delete(ndb.nodeCache, string(hash))
 	}
 }
 
