@@ -70,7 +70,7 @@ func (nv *NodeVersions) Reset(tree *ImmutableTree) {
 	nv.nextVersionIdx = 0
 	nv.totalNodes = 0
 
-	if tree == nil || tree.root == nil {
+	if tree == nil {
 		nv.firstVersion = 0
 		nv.nextVersion = 1
 		return
