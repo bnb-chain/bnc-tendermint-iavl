@@ -411,11 +411,19 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 	// set lastSaveRoot before pruning, we ensure lastSavedRoot is not nil if the tree is not empty
 	tree.updateLastSaveRoot()
 	maxPruneVersion, pruneNum, err := tree.nodeVersions.Commit(tree.version)
+	fmt.Println("maxPruneVersion:", maxPruneVersion, ", num", pruneNum)
 	if err != nil {
 		return nil, version, err
 	}
 	if pruneNum > 0 {
+		fmt.Println("pruning...")
 		tree.PruneInMemory(maxPruneVersion)
+	}
+
+	recordNodes := tree.nodeVersions.totalNodes
+	memNodes := tree.memoryNodeSize()
+	if recordNodes != memNodes {
+		fmt.Println("!!!ERROR!!! record:", recordNodes, ", mem:", memNodes)
 	}
 
 	// Set new working tree.
