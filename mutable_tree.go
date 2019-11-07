@@ -261,6 +261,8 @@ func (tree *MutableTree) Load() (int64, error) {
 func (tree *MutableTree) SetVersion(version int64) {
 	tree.version = version
 	tree.ndb.latestVersion = version
+	tree.nodeVersions.nextVersion = version
+	tree.nodeVersions.firstVersion = version - 1
 }
 
 // Returns the version number of the latest version found
