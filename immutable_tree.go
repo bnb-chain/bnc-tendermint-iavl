@@ -54,7 +54,7 @@ func (t *ImmutableTree) getRoot() *Node {
 
 	// root node is pruned, this can happen at the first time of getting root after last SaveVersion
 	t.mtx.Lock()
-	t.root = t.lastSavedRoot  // we can ensure lastSaveRoot is not nil when the tree is not empty
+	t.root = t.lastSavedRoot // we can ensure lastSaveRoot is not nil when the tree is not empty
 	t.root.loadVersion = t.version
 	t.nodeVersions.Inc1(t.root.loadVersion)
 	t.mtx.Unlock()
@@ -70,6 +70,7 @@ func (t *ImmutableTree) updateLastSaveRoot() {
 	// only keep the root node itself without the left and right node.
 	t.lastSavedRoot = &Node{
 		key:         root.key,
+		value:       root.value,
 		height:      root.height,
 		version:     root.version,
 		size:        root.size,
