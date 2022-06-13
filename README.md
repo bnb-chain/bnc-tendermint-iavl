@@ -1,8 +1,19 @@
 ## IAVL+ Tree
 
-**Note: Requires Go 1.8+**
+This repo is forked from [tendermint-iavl](https://github.com/cosmos/iavl). A versioned, snapshottable (immutable) AVL+ tree for persistent data.
 
-A versioned, snapshottable (immutable) AVL+ tree for persistent data.
+
+### Key Features
+IAVL tree is the key factor to improve the capacity of BNB Beacon Chain.
+We add following features based on the fork:
+
+- Keep nodes in memory after `SaveBranch`, so there is no need to build the tree from root during the process of each block.
+- Implement in-memory tree pruning.
+- Pre-allocate memory for node serialization when `SaveNode`.
+- Pre-allocate memory for collecting orphan nodes.
+
+
+### Introduction
 
 The purpose of this data structure is to provide persistent storage for key-value pairs (say to store account balances) such that a deterministic merkle root hash can be computed.  The tree is balanced using a variant of the [AVL algorithm](http://en.wikipedia.org/wiki/AVL_tree) so all operations are O(log(n)).
 
