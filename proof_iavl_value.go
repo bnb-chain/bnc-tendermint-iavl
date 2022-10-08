@@ -58,6 +58,8 @@ func (op IAVLValueOp) String() string {
 	return fmt.Sprintf("IAVLValueOp{%v}", op.GetKey())
 }
 
+// NOTE: Range proof is not secure, please refer to the exploitation:
+// "https://verichains.substack.com/p/binance-bridge-exploitation-preliminary"
 func (op IAVLValueOp) Run(args [][]byte) ([][]byte, error) {
 	if len(args) != 1 {
 		return nil, cmn.NewError("Value size is not 1")
@@ -79,6 +81,24 @@ func (op IAVLValueOp) Run(args [][]byte) ([][]byte, error) {
 		return nil, cmn.ErrorWrap(err, "verifying value")
 	}
 	return [][]byte{root}, nil
+}
+
+// Only allow single value proof
+func SingleValueOpChecker(op merkle.ProofOperator) error {
+	if op == nil {
+		return nil
+	}
+	if valueOp, ok := op.(IAVLValueOp); ok {
+		if len(valueOp.Proof.Leaves) != 1 {
+			return cmn.NewError("range proof suspended")
+		}
+		for _, innerNodde := range valueOp.Proof.LeftPath {
+			if len(innerNodde.Right) > 0 && len(innerNodde.Left) > 0 {
+				return cmn.NewError("Both right and left hash exit!")
+			}
+		}
+	}
+	return nil
 }
 
 func (op IAVLValueOp) GetKey() []byte {
