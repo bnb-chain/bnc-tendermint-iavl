@@ -155,6 +155,19 @@ func (t *ImmutableTree) Get(key []byte) (index int64, value []byte) {
 	return root.get(t, key)
 }
 
+// GetWithIndex returns the index and value of the specified key if it exists, or nil and the next index
+// otherwise. The returned value must not be modified, since it may point to data stored within
+// IAVL.
+//
+// The index is the index in the list of leaf nodes sorted lexicographically by key. The leftmost leaf has index 0.
+// It's neighbor has index 1 and so on.
+func (t *ImmutableTree) GetWithIndex(key []byte) (int64, []byte) {
+	if t.root == nil {
+		return 0, nil
+	}
+	return t.root.get(t, key)
+}
+
 // GetByIndex gets the key and value at the specified index.
 func (t *ImmutableTree) GetByIndex(index int64) (key []byte, value []byte) {
 	root := t.getRoot()

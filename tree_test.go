@@ -21,6 +21,8 @@ var testFuzzIterations int
 var random *cmn.Rand
 
 func init() {
+	testing.Init()
+
 	random = cmn.NewRand()
 	random.Seed(0) // for determinism
 	flag.BoolVar(&testLevelDB, "test.leveldb", false, "test leveldb backend")
