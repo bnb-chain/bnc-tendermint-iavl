@@ -30,3 +30,5 @@ require (
 )
 
 replace github.com/tendermint/go-amino => github.com/binance-chain/bnc-go-amino v0.14.1-binance.2
+
+replace github.com/confio/ics23/go => github.com/bnb-chain/ics23 v0.0.0-20221019083415-6917387c7907
