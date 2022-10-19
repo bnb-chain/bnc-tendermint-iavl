@@ -1,10 +1,11 @@
 package iavl
 
 import (
-	"encoding/binary"
+	"bytes"
 	"fmt"
 
 	ics23 "github.com/confio/ics23/go"
+	"github.com/tendermint/go-amino"
 )
 
 /*
@@ -103,17 +104,21 @@ func convertExistenceProof(p *RangeProof, key, value []byte) (*ics23.ExistencePr
 }
 
 func convertLeafOp(version int64) *ics23.LeafOp {
-	var varintBuf [binary.MaxVarintLen64]byte
-	// this is adapted from iavl/proof.go:proofLeafNode.Hash()
-	prefix := convertVarIntToBytes(0, varintBuf)
-	prefix = append(prefix, convertVarIntToBytes(1, varintBuf)...)
-	prefix = append(prefix, convertVarIntToBytes(version, varintBuf)...)
+	buf := new(bytes.Buffer)
+
+	err := amino.EncodeInt8(buf, 0)
+	if err == nil {
+		err = amino.EncodeVarint(buf, 1)
+	}
+	if err == nil {
+		err = amino.EncodeVarint(buf, version)
+	}
 
 	return &ics23.LeafOp{
 		Hash:         ics23.HashOp_SHA256,
 		PrehashValue: ics23.HashOp_SHA256,
 		Length:       ics23.LengthOp_VAR_PROTO,
-		Prefix:       prefix,
+		Prefix:       buf.Bytes(),
 	}
 }
 
@@ -124,15 +129,20 @@ func convertInnerOps(path PathToLeaf) []*ics23.InnerOp {
 	// lengthByte is the length prefix prepended to each of the sha256 sub-hashes
 	var lengthByte byte = 0x20
 
-	var varintBuf [binary.MaxVarintLen64]byte
-
 	// we need to go in reverse order, iavl starts from root to leaf,
 	// we want to go up from the leaf to the root
 	for i := len(path) - 1; i >= 0; i-- {
 		// this is adapted from iavl/proof.go:proofInnerNode.Hash()
-		prefix := convertVarIntToBytes(int64(path[i].Height), varintBuf)
-		prefix = append(prefix, convertVarIntToBytes(path[i].Size, varintBuf)...)
-		prefix = append(prefix, convertVarIntToBytes(path[i].Version, varintBuf)...)
+		buf := new(bytes.Buffer)
+		err := amino.EncodeInt8(buf, path[i].Height)
+		if err == nil {
+			err = amino.EncodeVarint(buf, path[i].Size)
+		}
+		if err == nil {
+			err = amino.EncodeVarint(buf, path[i].Version)
+		}
+
+		prefix := buf.Bytes()
 
 		var suffix []byte
 		if len(path[i].Left) > 0 {
@@ -157,9 +167,4 @@ func convertInnerOps(path PathToLeaf) []*ics23.InnerOp {
 		steps = append(steps, op)
 	}
 	return steps
-}
-
-func convertVarIntToBytes(orig int64, buf [binary.MaxVarintLen64]byte) []byte {
-	n := binary.PutVarint(buf[:], orig)
-	return buf[:n]
 }
