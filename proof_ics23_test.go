@@ -9,7 +9,6 @@ import (
 
 	ics23 "github.com/confio/ics23/go"
 	"github.com/stretchr/testify/require"
-
 	"github.com/tendermint/tendermint/libs/db"
 )
 
