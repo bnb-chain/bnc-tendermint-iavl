@@ -1,7 +1,7 @@
 github.com/binance-chain/bnc-go-amino v0.14.1-binance.2 h1:XcbcfisVItk92UKoGbtNT8nbcfadj3H3ayuM2srAfVs=
 github.com/binance-chain/bnc-go-amino v0.14.1-binance.2/go.mod h1:yaElUUxWtv/TC/ldGtlKAvS1vKwokxgJ1d97I+6is80=
-github.com/bnb-chain/ics23 v0.0.0-20221019083415-6917387c7907 h1:+HcMMGMwbS0g2nAwdCe8vyI0t8tNaGw13gAwVT2QEf8=
-github.com/bnb-chain/ics23 v0.0.0-20221019083415-6917387c7907/go.mod h1:2a4dBq88TUoqoWAU5eu0lGvpFP3wWDPgdHPargtyw30=
+github.com/bnb-chain/ics23 v0.0.0-20221021082321-d0a365dd9898 h1:lnDi72nkJTb/3pihvIyz6F3YGqCcom9iP+kva3h0iyM=
+github.com/bnb-chain/ics23 v0.0.0-20221021082321-d0a365dd9898/go.mod h1:cU6lTGolbbLFsGCgceNB2AzplH1xecLp6+KXvxM32nI=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

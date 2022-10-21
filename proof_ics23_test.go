@@ -2,28 +2,14 @@ package iavl
 
 import (
 	"bytes"
-	"fmt"
 	"math/rand"
 	"sort"
 	"testing"
 
-	ics23 "github.com/confio/ics23/go"
+	"github.com/bnb-chain/ics23"
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/libs/db"
 )
-
-func TestConvertExistence(t *testing.T) {
-	proof, err := GenerateResult(200, Middle)
-	require.NoError(t, err)
-
-	converted, err := convertExistenceProof(proof.Proof, proof.Key, proof.Value)
-	require.NoError(t, err)
-
-	calc, err := converted.Calculate()
-	require.NoError(t, err)
-
-	require.Equal(t, []byte(calc), proof.RootHash, "Calculated: %X\nExpected:   %X", calc, proof.RootHash)
-}
 
 func TestGetMembership(t *testing.T) {
 	cases := map[string]struct {
@@ -46,14 +32,14 @@ func TestGetMembership(t *testing.T) {
 
 			key := GetKey(allkeys, tc.loc)
 			_, val := tree.Get(key)
+			require.NotNil(t, val)
 			proof, err := tree.GetMembershipProof(key)
 			require.NoError(t, err, "Creating Proof: %+v", err)
 
-			root := tree.Hash()
+			root := tree.WorkingHash()
+			require.NoError(t, err)
 			valid := ics23.VerifyMembership(ics23.IavlSpec, root, proof, key, val)
-			if !valid {
-				require.NoError(t, err, "Membership Proof Invalid")
-			}
+			require.True(t, valid, "Membership Proof Invalid")
 		})
 	}
 }
@@ -77,11 +63,10 @@ func TestGetNonMembership(t *testing.T) {
 		proof, err := tree.GetNonMembershipProof(key)
 		require.NoError(t, err, "Creating Proof: %+v", err)
 
-		root := tree.Hash()
+		root := tree.WorkingHash()
+		require.NoError(t, err)
 		valid := ics23.VerifyNonMembership(ics23.IavlSpec, root, proof, key)
-		if !valid {
-			require.NoError(t, err, "Non Membership Proof Invalid")
-		}
+		require.True(t, valid, "Non Membership Proof Invalid")
 	}
 
 	for name, tc := range cases {
@@ -125,11 +110,10 @@ func BenchmarkGetNonMembership(b *testing.B) {
 		require.NoError(b, err, "Creating Proof: %+v", err)
 
 		b.StopTimer()
-		root := tree.Hash()
+		root := tree.WorkingHash()
+		require.NoError(b, err)
 		valid := ics23.VerifyNonMembership(ics23.IavlSpec, root, proof, key)
-		if !valid {
-			require.NoError(b, err, "Non Membership Proof Invalid")
-		}
+		require.True(b, valid)
 		b.StartTimer()
 	}
 
@@ -166,49 +150,6 @@ func BenchmarkGetNonMembership(b *testing.B) {
 }
 
 // Test Helpers
-
-// Result is the result of one match
-type Result struct {
-	Key      []byte
-	Value    []byte
-	Proof    *RangeProof
-	RootHash []byte
-}
-
-// GenerateResult makes a tree of size and returns a range proof for one random element
-//
-// returns a range proof and the root hash of the tree
-func GenerateResult(size int, loc Where) (*Result, error) {
-	tree, allkeys, err := BuildTree(size, 0)
-	if err != nil {
-		return nil, err
-	}
-	_, _, err = tree.SaveVersion()
-	if err != nil {
-		return nil, err
-	}
-	key := GetKey(allkeys, loc)
-
-	value, proof, err := tree.GetWithProof(key)
-	if err != nil {
-		return nil, err
-	}
-	if value == nil {
-		return nil, fmt.Errorf("tree.GetWithProof returned nil value")
-	}
-	if len(proof.Leaves) != 1 {
-		return nil, fmt.Errorf("tree.GetWithProof returned %d leaves", len(proof.Leaves))
-	}
-	root := tree.Hash()
-
-	res := &Result{
-		Key:      key,
-		Value:    value,
-		Proof:    proof,
-		RootHash: root,
-	}
-	return res, nil
-}
 
 // Where selects a location for a key - Left, Right, or Middle
 type Where int

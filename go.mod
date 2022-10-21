@@ -3,7 +3,7 @@ module github.com/tendermint/iavl
 go 1.12
 
 require (
-	github.com/confio/ics23/go v0.7.0
+	github.com/bnb-chain/ics23 v0.0.0-20221021082321-d0a365dd9898
 	github.com/fortytw2/leaktest v1.3.0 // indirect
 	github.com/go-kit/kit v0.6.0 // indirect
 	github.com/go-logfmt/logfmt v0.4.0 // indirect
@@ -30,5 +30,3 @@ require (
 )
 
 replace github.com/tendermint/go-amino => github.com/binance-chain/bnc-go-amino v0.14.1-binance.2
-
-replace github.com/confio/ics23/go => github.com/bnb-chain/ics23 v0.0.0-20221019083415-6917387c7907

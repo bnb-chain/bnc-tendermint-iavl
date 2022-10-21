@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
-	ics23 "github.com/confio/ics23/go"
+	"github.com/bnb-chain/ics23"
 	"github.com/tendermint/go-amino"
 )
 
@@ -13,7 +13,7 @@ GetMembershipProof will produce a CommitmentProof that the given key (and querie
 If the key doesn't exist in the tree, this will return an error.
 */
 func (t *ImmutableTree) GetMembershipProof(key []byte) (*ics23.CommitmentProof, error) {
-	exist, err := createExistenceProof(t, key)
+	exist, err := t.createExistenceProof(key)
 	if err != nil {
 		return nil, err
 	}
@@ -25,6 +25,16 @@ func (t *ImmutableTree) GetMembershipProof(key []byte) (*ics23.CommitmentProof, 
 	return proof, nil
 }
 
+// VerifyMembership returns true if proof is an ExistenceProof for the given key.
+func (t *ImmutableTree) VerifyMembership(proof *ics23.CommitmentProof, key []byte) (bool, error) {
+	_, val := t.Get(key)
+	if val == nil {
+		return false, nil
+	}
+	root := t.Hash()
+	return ics23.VerifyMembership(ics23.IavlSpec, root, proof, key, val), nil
+}
+
 /*
 GetNonMembershipProof will produce a CommitmentProof that the given key doesn't exist in the iavl tree.
 If the key exists in the tree, this will return an error.
@@ -32,7 +42,7 @@ If the key exists in the tree, this will return an error.
 func (t *ImmutableTree) GetNonMembershipProof(key []byte) (*ics23.CommitmentProof, error) {
 	// idx is one node right of what we want....
 	var err error
-	idx, val := t.GetWithIndex(key)
+	idx, val := t.Get(key)
 
 	if val != nil {
 		return nil, fmt.Errorf("cannot create NonExistanceProof when Key in State")
@@ -44,11 +54,7 @@ func (t *ImmutableTree) GetNonMembershipProof(key []byte) (*ics23.CommitmentProo
 
 	if idx >= 1 {
 		leftkey, _ := t.GetByIndex(idx - 1)
-		if err != nil {
-			return nil, err
-		}
-
-		nonexist.Left, err = createExistenceProof(t, leftkey)
+		nonexist.Left, err = t.createExistenceProof(leftkey)
 		if err != nil {
 			return nil, err
 		}
@@ -56,12 +62,8 @@ func (t *ImmutableTree) GetNonMembershipProof(key []byte) (*ics23.CommitmentProo
 
 	// this will be nil if nothing right of the queried key
 	rightkey, _ := t.GetByIndex(idx)
-	if err != nil {
-		return nil, err
-	}
-
 	if rightkey != nil {
-		nonexist.Right, err = createExistenceProof(t, rightkey)
+		nonexist.Right, err = t.createExistenceProof(rightkey)
 		if err != nil {
 			return nil, err
 		}
@@ -75,32 +77,25 @@ func (t *ImmutableTree) GetNonMembershipProof(key []byte) (*ics23.CommitmentProo
 	return proof, nil
 }
 
-func createExistenceProof(tree *ImmutableTree, key []byte) (*ics23.ExistenceProof, error) {
-	value, proof, err := tree.GetWithProof(key)
-	if err != nil {
-		return nil, err
-	}
-	if value == nil {
-		return nil, fmt.Errorf("cannot create ExistanceProof when Key not in State")
-	}
-	return convertExistenceProof(proof, key, value)
+// VerifyNonMembership returns true iff proof is a NonExistenceProof for the given key.
+func (t *ImmutableTree) VerifyNonMembership(proof *ics23.CommitmentProof, key []byte) (bool, error) {
+	root := t.Hash()
+
+	return ics23.VerifyNonMembership(ics23.IavlSpec, root, proof, key), nil
 }
 
-// convertExistenceProof will convert the given proof into a valid
+// createExistenceProof will get the proof from the tree and convert the proof into a valid
 // existence proof, if that's what it is.
-//
-// This is the simplest case of the range proof and we will focus on
-// demoing compatibility here
-func convertExistenceProof(p *RangeProof, key, value []byte) (*ics23.ExistenceProof, error) {
-	if len(p.Leaves) != 1 {
-		return nil, fmt.Errorf("existence proof requires RangeProof to have exactly one leaf")
-	}
+func (t *ImmutableTree) createExistenceProof(key []byte) (*ics23.ExistenceProof, error) {
+	t.Hash()
+
+	path, node, err := t.root.PathToLeaf(t, key)
 	return &ics23.ExistenceProof{
-		Key:   key,
-		Value: value,
-		Leaf:  convertLeafOp(p.Leaves[0].Version),
-		Path:  convertInnerOps(p.LeftPath),
-	}, nil
+		Key:   node.key,
+		Value: node.value,
+		Leaf:  convertLeafOp(node.version),
+		Path:  convertInnerOps(path),
+	}, err
 }
 
 func convertLeafOp(version int64) *ics23.LeafOp {
@@ -167,4 +162,38 @@ func convertInnerOps(path PathToLeaf) []*ics23.InnerOp {
 		steps = append(steps, op)
 	}
 	return steps
+}
+
+// GetProof gets the proof for the given key.
+func (t *ImmutableTree) GetProof(key []byte) (*ics23.CommitmentProof, error) {
+	if t.root == nil {
+		return nil, fmt.Errorf("cannot generate the proof with nil root")
+	}
+
+	exist := t.Has(key)
+
+	if exist {
+		return t.GetMembershipProof(key)
+	}
+	return t.GetNonMembershipProof(key)
+}
+
+// VerifyProof checks if the proof is correct for the given key.
+func (t *ImmutableTree) VerifyProof(proof *ics23.CommitmentProof, key []byte) (bool, error) {
+	if proof.GetExist() != nil {
+		return t.VerifyMembership(proof, key)
+	}
+	return t.VerifyNonMembership(proof, key)
+}
+
+// GetVersionedProof gets the proof for the given key at the specified version.
+func (tree *MutableTree) GetVersionedProof(key []byte, version int64) (*ics23.CommitmentProof, error) {
+	if tree.VersionExists(version) {
+		t, err := tree.GetImmutable(version)
+		if err != nil {
+			return nil, err
+		}
+		return t.GetProof(key)
+	}
+	return nil, ErrVersionDoesNotExist
 }
